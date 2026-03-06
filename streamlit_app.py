@@ -218,7 +218,7 @@ def render_summary_cards() -> None:
         """
         <div class="hero-panel">
           <div class="hero-kicker">Sondage partagé</div>
-          <h1 class="hero-title">Trouvez nos dates communes.</h1>
+          <h1 class="hero-title">Trouvons nos dates communes.</h1>
           <p class="hero-subtitle">
             Créez un calendrier, partagez le lien, puis laissez chaque ami voter
             jour par jour avec trois niveaux de disponibilité.
