@@ -79,10 +79,8 @@ export default function (component) {
   tooltipElement.classList.add("is-hidden");
 
   const locale = data?.locale ?? "fr-FR";
-  const themeType = data?.themeType ?? "light";
   const readOnly = Boolean(data?.readOnly);
   const activeStatusLabel = data?.activeStatusLabel ?? "Disponible";
-  shellElement.dataset.theme = themeType;
   subtitleElement.textContent = readOnly
     ? "Survolez une date pour voir qui est disponible."
     : `Cliquez ou glissez pour appliquer le statut actif : ${activeStatusLabel}.`;

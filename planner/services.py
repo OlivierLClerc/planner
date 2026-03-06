@@ -113,7 +113,6 @@ def build_calendar_payload(
     *,
     event: Event,
     participant_count: int,
-    theme_type: str,
     current_votes: dict[str, int],
     summaries: Iterable[DaySummary],
     active_status: int,
@@ -139,7 +138,6 @@ def build_calendar_payload(
         "effectiveParticipantLimit": (
             event.participant_limit if event.participant_limit > 0 else max(participant_count, 1)
         ),
-        "themeType": theme_type,
         "activeStatus": active_status,
         "activeStatusLabel": STATUS_LABELS[active_status],
         "currentVotes": current_votes,

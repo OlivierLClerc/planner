@@ -27,118 +27,92 @@ from planner.services import (
     total_days,
     update_pending_votes,
 )
-
-
-def current_theme_type() -> str:
-    theme = getattr(st.context, "theme", None)
-    theme_type = getattr(theme, "type", None)
-    return "dark" if theme_type == "dark" else "light"
-
-
-def build_app_style(theme_type: str) -> str:
-    is_dark = theme_type == "dark"
-    palette = {
-        "app_background": (
-            "radial-gradient(circle at top left, rgba(238, 137, 89, 0.14), transparent 26%),"
-            "radial-gradient(circle at 85% 15%, rgba(76, 154, 119, 0.14), transparent 24%),"
-            "linear-gradient(180deg, #0f1512 0%, #151d18 100%)"
-            if is_dark
-            else "radial-gradient(circle at top left, rgba(243, 211, 150, 0.24), transparent 26%),"
-            "radial-gradient(circle at 85% 15%, rgba(110, 182, 143, 0.12), transparent 24%),"
-            "linear-gradient(180deg, #f8f5ef 0%, #f3f6f1 100%)"
-        ),
-        "panel_border": "rgba(222, 232, 225, 0.10)" if is_dark else "rgba(23, 53, 39, 0.08)",
-        "panel_background": (
-            "radial-gradient(circle at top left, rgba(236, 143, 86, 0.16), transparent 28%),"
-            "linear-gradient(145deg, rgba(24, 31, 27, 0.96), rgba(18, 25, 21, 0.96))"
-            if is_dark
-            else "radial-gradient(circle at top left, rgba(255, 224, 169, 0.55), transparent 28%),"
-            "linear-gradient(145deg, rgba(255, 251, 244, 0.96), rgba(239, 247, 241, 0.96))"
-        ),
-        "panel_shadow": "0 20px 34px rgba(0, 0, 0, 0.24)" if is_dark else "0 20px 34px rgba(23, 53, 39, 0.06)",
-        "kicker": "rgba(224, 234, 227, 0.68)" if is_dark else "rgba(23, 53, 39, 0.6)",
-        "title": "#f3efe8" if is_dark else "#173527",
-        "text": "rgba(233, 240, 235, 0.84)" if is_dark else "rgba(23, 53, 39, 0.78)",
-        "summary_background": "rgba(25, 34, 28, 0.92)" if is_dark else "rgba(255, 252, 246, 0.9)",
-        "summary_rank": "rgba(224, 234, 227, 0.62)" if is_dark else "rgba(23, 53, 39, 0.56)",
-        "note": "rgba(231, 239, 233, 0.76)" if is_dark else "rgba(23, 53, 39, 0.72)",
-    }
-
-    return f"""
+APP_STYLE = """
 <style>
-  [data-testid="stAppViewContainer"] {{
-    background: {palette["app_background"]};
-  }}
+  [data-testid="stAppViewContainer"] {
+    background:
+      radial-gradient(circle at top left, rgba(243, 211, 150, 0.18), transparent 26%),
+      radial-gradient(circle at 85% 15%, rgba(110, 182, 143, 0.14), transparent 24%),
+      var(--st-background-color, #f8f5ef);
+  }
 
-  [data-testid="stHeader"] {{
+  [data-testid="stHeader"] {
     background: transparent;
-  }}
+  }
 
-  .hero-panel {{
+  .hero-panel {
     padding: 1.35rem 1.45rem;
-    border: 1px solid {palette["panel_border"]};
+    border: 1px solid rgba(127, 127, 127, 0.18);
     border-radius: 28px;
-    background: {palette["panel_background"]};
-    box-shadow: {palette["panel_shadow"]};
-  }}
+    background:
+      radial-gradient(circle at top left, rgba(255, 224, 169, 0.14), transparent 28%),
+      radial-gradient(circle at 100% 0%, rgba(110, 182, 143, 0.10), transparent 24%),
+      var(--st-secondary-background-color, rgba(255, 251, 244, 0.96));
+    box-shadow: 0 20px 34px rgba(0, 0, 0, 0.10);
+  }
 
-  .hero-kicker {{
+  .hero-kicker {
     margin-bottom: 0.4rem;
-    color: {palette["kicker"]};
+    color: var(--st-text-color, #173527);
+    opacity: 0.72;
     font-size: 0.8rem;
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-  }}
+  }
 
-  .hero-title {{
+  .hero-title {
     margin: 0;
-    color: {palette["title"]};
+    color: var(--st-text-color, #173527);
     font-size: 2.15rem;
     line-height: 1.1;
-  }}
+  }
 
-  .hero-subtitle {{
+  .hero-subtitle {
     margin: 0.65rem 0 0;
-    color: {palette["text"]};
+    color: var(--st-text-color, #173527);
+    opacity: 0.88;
     font-size: 1rem;
     line-height: 1.55;
-  }}
+  }
 
-  .summary-card {{
+  .summary-card {
     padding: 1rem 1.05rem;
-    border: 1px solid {palette["panel_border"]};
+    border: 1px solid rgba(127, 127, 127, 0.18);
     border-radius: 22px;
-    background: {palette["summary_background"]};
-  }}
+    background: var(--st-secondary-background-color, rgba(255, 252, 246, 0.9));
+  }
 
-  .summary-rank {{
-    color: {palette["summary_rank"]};
+  .summary-rank {
+    color: var(--st-text-color, #173527);
+    opacity: 0.66;
     font-size: 0.74rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-  }}
+  }
 
-  .summary-date {{
+  .summary-date {
     margin-top: 0.25rem;
     font-size: 1rem;
     font-weight: 700;
-    color: {palette["title"]};
-  }}
+    color: var(--st-text-color, #173527);
+  }
 
-  .summary-meta {{
+  .summary-meta {
     margin-top: 0.45rem;
-    color: {palette["text"]};
+    color: var(--st-text-color, #173527);
+    opacity: 0.88;
     font-size: 0.88rem;
     line-height: 1.5;
-  }}
+  }
 
-  .soft-note {{
-    color: {palette["note"]};
+  .soft-note {
+    color: var(--st-text-color, #173527);
+    opacity: 0.82;
     font-size: 0.94rem;
     line-height: 1.55;
-  }}
+  }
 </style>
 """
 
@@ -497,7 +471,6 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
     payload = build_calendar_payload(
         event=event,
         participant_count=participant_count,
-        theme_type=current_theme_type(),
         current_votes=current_votes,
         summaries=summaries,
         active_status=active_status,
@@ -561,7 +534,7 @@ def main() -> None:
         page_title="Dispo entre amis",
         layout="wide",
     )
-    st.markdown(build_app_style(current_theme_type()), unsafe_allow_html=True)
+    st.markdown(APP_STYLE, unsafe_allow_html=True)
 
     repo = get_repository()
     event_slug = current_event_slug()
