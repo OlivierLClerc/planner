@@ -45,6 +45,10 @@ class Event:
     organizer_name: str
     created_at: str
 
+    @property
+    def has_fixed_participant_limit(self) -> bool:
+        return self.participant_limit > 0
+
 
 @dataclass(frozen=True)
 class Participant:
@@ -192,7 +196,7 @@ class PlannerRepository:
             raise ValidationError("Le code organisateur est obligatoire.")
         if end_date < start_date:
             raise ValidationError("La date de fin doit etre apres la date de debut.")
-        if participant_limit < 1:
+        if participant_limit < 0:
             raise ValidationError("Le nombre maximum de participants doit etre positif.")
 
         with self._connect() as connection:
@@ -281,9 +285,9 @@ class PlannerRepository:
                 return self._participant_from_row(existing_row)
 
             participant_count = self.get_participant_count(event.id, connection=connection)
-            if participant_count >= event.participant_limit:
+            if event.participant_limit > 0 and participant_count >= event.participant_limit:
                 raise ParticipantLimitError(
-                    "Ce sondage a deja atteint la limite de 10 participants."
+                    f"Ce sondage a deja atteint la limite de {event.participant_limit} participants."
                 )
 
             created_at = utc_timestamp()
@@ -431,6 +435,7 @@ class PlannerRepository:
         }
 
         with self._connect() as connection:
+            participant_count = self.get_participant_count(event.id, connection=connection)
             rows = connection.execute(
                 """
                 SELECT a.date, a.status, p.display_name
@@ -450,12 +455,14 @@ class PlannerRepository:
                 bucket["maybe_names"].append(row["display_name"])
 
         summaries: list[DaySummary] = []
+        score_capacity = event.participant_limit if event.participant_limit > 0 else max(participant_count, 1)
+
         for iso_day, values in day_map.items():
             available_names = tuple(values["available_names"])
             maybe_names = tuple(values["maybe_names"])
             score = min(
                 (2 * len(available_names) + len(maybe_names))
-                / float(2 * event.participant_limit),
+                / float(2 * score_capacity),
                 1.0,
             )
             summaries.append(
@@ -525,4 +532,3 @@ class PlannerRepository:
             display_name=str(row["display_name"]),
             created_at=str(row["created_at"]),
         )
-

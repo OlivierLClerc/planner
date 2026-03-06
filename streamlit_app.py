@@ -22,6 +22,7 @@ from planner.services import (
     format_date_range_fr,
     format_long_date_fr,
     merge_vote_overrides,
+    summarize_color_scale_text,
     summarize_participants_text,
     total_days,
     update_pending_votes,
@@ -228,6 +229,27 @@ def render_home(repo: PlannerRepository) -> None:
                     value=today + timedelta(days=37),
                     format="DD/MM/YYYY",
                 )
+            participant_mode = st.radio(
+                "Nombre de participants attendu",
+                options=["Fixe", "Inconnu"],
+                horizontal=True,
+            )
+            if participant_mode == "Fixe":
+                participant_limit = int(
+                    st.number_input(
+                        "Nombre maximum de participants",
+                        min_value=1,
+                        max_value=200,
+                        value=10,
+                        step=1,
+                    )
+                )
+            else:
+                participant_limit = 0
+                st.caption(
+                    "Le nombre de participants reste ouvert. "
+                    "L'intensite des couleurs s'adaptera au nombre actuel de participants."
+                )
 
             submitted = st.form_submit_button("Creer le sondage", use_container_width=True)
 
@@ -240,6 +262,7 @@ def render_home(repo: PlannerRepository) -> None:
                     end_date=end_date,
                     organizer_name=organizer_name,
                     organizer_code=organizer_code,
+                    participant_limit=participant_limit,
                 )
             except ValidationError as error:
                 st.error(str(error))
@@ -366,6 +389,7 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
     metric_col_1.metric("Periode", format_date_range_fr(event.start_date, event.end_date))
     metric_col_2.metric("Participants", summarize_participants_text(participant_count, event.participant_limit))
     metric_col_3.metric("Jours proposes", str(total_days(event)))
+    st.caption(summarize_color_scale_text(participant_count, event.participant_limit))
 
     with st.expander("Participants inscrits", expanded=False):
         if participants:
@@ -413,6 +437,7 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
 
     payload = build_calendar_payload(
         event=event,
+        participant_count=participant_count,
         current_votes=current_votes,
         summaries=summaries,
         active_status=active_status,

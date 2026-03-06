@@ -112,6 +112,7 @@ def update_pending_votes(
 def build_calendar_payload(
     *,
     event: Event,
+    participant_count: int,
     current_votes: dict[str, int],
     summaries: Iterable[DaySummary],
     active_status: int,
@@ -134,6 +135,9 @@ def build_calendar_payload(
         "endDate": event.end_date.isoformat(),
         "locale": "fr-FR",
         "participantLimit": event.participant_limit,
+        "effectiveParticipantLimit": (
+            event.participant_limit if event.participant_limit > 0 else max(participant_count, 1)
+        ),
         "activeStatus": active_status,
         "activeStatusLabel": STATUS_LABELS[active_status],
         "currentVotes": current_votes,
@@ -158,7 +162,16 @@ def compute_top_dates(
 
 
 def summarize_participants_text(participant_count: int, participant_limit: int) -> str:
+    if participant_limit <= 0:
+        return f"{participant_count} / inconnu"
     return f"{participant_count} / {participant_limit} participants"
+
+
+def summarize_color_scale_text(participant_count: int, participant_limit: int) -> str:
+    if participant_limit > 0:
+        return f"Echelle fixee sur {participant_limit} participant(s)"
+    effective_limit = max(participant_count, 1)
+    return f"Echelle adaptee au nombre actuel de participants: {effective_limit}"
 
 
 def total_days(event: Event) -> int:

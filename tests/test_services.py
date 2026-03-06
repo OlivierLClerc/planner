@@ -11,7 +11,13 @@ from planner.database import (
     SecretCodeError,
 )
 from planner.services import compute_top_dates, format_long_date_fr
-from planner.services import extract_event_slug, merge_vote_overrides, update_pending_votes
+from planner.services import (
+    extract_event_slug,
+    merge_vote_overrides,
+    summarize_color_scale_text,
+    summarize_participants_text,
+    update_pending_votes,
+)
 
 
 class PlannerRepositoryTestCase(unittest.TestCase):
@@ -95,6 +101,26 @@ class PlannerRepositoryTestCase(unittest.TestCase):
                 secret_code="code-11",
             )
 
+    def test_unknown_participant_limit_does_not_block_new_participants(self) -> None:
+        event = self.repo.create_event(
+            title="Dates ouvertes",
+            description="Sans limite connue",
+            start_date=date(2026, 6, 1),
+            end_date=date(2026, 6, 2),
+            organizer_name="Camille",
+            organizer_code="organisateur",
+            participant_limit=0,
+        )
+
+        for index in range(15):
+            self.repo.register_or_login_participant(
+                event,
+                display_name=f"Libre {index}",
+                secret_code=f"secret-{index}",
+            )
+
+        self.assertEqual(self.repo.get_participant_count(event.id), 15)
+
     def test_aggregates_and_top_dates_follow_weighted_sorting(self) -> None:
         alice = self.repo.register_or_login_participant(
             self.event,
@@ -149,6 +175,44 @@ class PlannerRepositoryTestCase(unittest.TestCase):
     def test_format_long_date_fr(self) -> None:
         self.assertEqual(format_long_date_fr(date(2026, 5, 1)), "vendredi 1 mai 2026")
 
+    def test_unknown_participant_limit_uses_current_participant_count_for_score(self) -> None:
+        event = self.repo.create_event(
+            title="Sans limite",
+            description="Le score suit les participants presents",
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 7, 1),
+            organizer_name="Camille",
+            organizer_code="organisateur",
+            participant_limit=0,
+        )
+
+        alice = self.repo.register_or_login_participant(
+            event,
+            display_name="Alice",
+            secret_code="alice",
+        )
+        bob = self.repo.register_or_login_participant(
+            event,
+            display_name="Bob",
+            secret_code="bob",
+        )
+
+        self.repo.update_participant_availability(
+            event,
+            alice.id,
+            dates=["2026-07-01"],
+            status=2,
+        )
+        self.repo.update_participant_availability(
+            event,
+            bob.id,
+            dates=["2026-07-01"],
+            status=2,
+        )
+
+        summaries = self.repo.get_day_summaries(event)
+        self.assertAlmostEqual(summaries[0].score, 1.0)
+
     def test_extract_event_slug_accepts_raw_slug_and_shared_link(self) -> None:
         self.assertEqual(extract_event_slug("reunion-biannuelle"), "reunion-biannuelle")
         self.assertEqual(
@@ -192,6 +256,18 @@ class PlannerRepositoryTestCase(unittest.TestCase):
             status=0,
         )
         self.assertEqual(reverted_pending_votes, {})
+
+    def test_participant_and_color_scale_labels(self) -> None:
+        self.assertEqual(summarize_participants_text(3, 10), "3 / 10 participants")
+        self.assertEqual(summarize_participants_text(3, 0), "3 / inconnu")
+        self.assertEqual(
+            summarize_color_scale_text(3, 10),
+            "Echelle fixee sur 10 participant(s)",
+        )
+        self.assertEqual(
+            summarize_color_scale_text(3, 0),
+            "Echelle adaptee au nombre actuel de participants: 3",
+        )
 
 
 if __name__ == "__main__":
