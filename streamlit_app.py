@@ -347,12 +347,18 @@ def render_home(repo: PlannerRepository) -> None:
         )
 
 
-def resolve_logged_participant(repo: PlannerRepository, event_slug: str, event_id: int):
+def resolve_logged_participant(
+    repo: PlannerRepository,
+    event_slug: str,
+    event_id: int,
+    *,
+    connection=None,
+):
     participant_id = get_logged_participant_id(event_slug)
     if participant_id is None:
         return None
 
-    participant = repo.get_participant_by_id(event_id, participant_id)
+    participant = repo.get_participant_by_id(event_id, participant_id, connection=connection)
     if participant is None:
         logout_participant(event_slug)
     return participant
@@ -386,18 +392,33 @@ def render_top_dates(summaries) -> None:
 
 
 def render_event(repo: PlannerRepository, event_slug: str) -> None:
-    event = repo.get_event_by_slug(event_slug)
-    if event is None:
-        st.error("Le sondage demande n'existe pas.")
-        if st.button("Retour a l'accueil", use_container_width=True):
-            set_event_slug(None)
-            st.rerun()
-        return
+    with repo.connect() as connection:
+        event = repo.get_event_by_slug(event_slug, connection=connection)
+        if event is None:
+            st.error("Le sondage demande n'existe pas.")
+            if st.button("Retour a l'accueil", use_container_width=True):
+                set_event_slug(None)
+                st.rerun()
+            return
 
-    participant_count = repo.get_participant_count(event.id)
-    participants = repo.list_participants(event.id)
-    summaries = repo.get_day_summaries(event)
-    participant = resolve_logged_participant(repo, event.slug, event.id)
+        participant_count = repo.get_participant_count(event.id, connection=connection)
+        participants = repo.list_participants(event.id, connection=connection)
+        summaries = repo.get_day_summaries(
+            event,
+            participant_count=participant_count,
+            connection=connection,
+        )
+        participant = resolve_logged_participant(
+            repo,
+            event.slug,
+            event.id,
+            connection=connection,
+        )
+        saved_votes = (
+            repo.get_participant_availability(event.id, participant.id, connection=connection)
+            if participant is not None
+            else {}
+        )
 
     safe_title = html.escape(event.title)
     safe_description = html.escape(
@@ -490,7 +511,6 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
                 clear_pending_votes(event.slug, participant.id)
                 logout_participant(event.slug)
                 st.rerun()
-        saved_votes = repo.get_participant_availability(event.id, participant.id)
         pending_votes = get_pending_votes(event.slug, participant.id)
         current_votes = merge_vote_overrides(saved_votes, pending_votes)
 

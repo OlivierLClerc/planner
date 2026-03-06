@@ -181,6 +181,11 @@ class PlannerRepository:
                 self._execute(connection, statement)
             connection.commit()
 
+    @contextmanager
+    def connect(self) -> Iterator[Any]:
+        with self._connect() as connection:
+            yield connection
+
     def create_event(
         self,
         *,
@@ -245,22 +250,46 @@ class PlannerRepository:
             raise PlannerError("Impossible de relire le sondage apres sa creation.")
         return event
 
-    def get_event_by_id(self, event_id: int) -> Event | None:
-        with self._connect() as connection:
+    def get_event_by_id(
+        self,
+        event_id: int,
+        *,
+        connection: Any | None = None,
+    ) -> Event | None:
+        should_close = connection is None
+        if connection is None:
+            connection = self._open_connection()
+
+        try:
             row = self._execute(
                 connection,
                 "SELECT * FROM events WHERE id = ?",
                 (event_id,),
             ).fetchone()
+        finally:
+            if should_close:
+                connection.close()
         return self._event_from_row(row) if row else None
 
-    def get_event_by_slug(self, slug: str) -> Event | None:
-        with self._connect() as connection:
+    def get_event_by_slug(
+        self,
+        slug: str,
+        *,
+        connection: Any | None = None,
+    ) -> Event | None:
+        should_close = connection is None
+        if connection is None:
+            connection = self._open_connection()
+
+        try:
             row = self._execute(
                 connection,
                 "SELECT * FROM events WHERE slug = ?",
                 (slug,),
             ).fetchone()
+        finally:
+            if should_close:
+                connection.close()
         return self._event_from_row(row) if row else None
 
     def register_or_login_participant(
@@ -342,8 +371,18 @@ class PlannerRepository:
             raise PlannerError("Impossible de relire le participant apres son inscription.")
         return participant
 
-    def get_participant_by_id(self, event_id: int, participant_id: int) -> Participant | None:
-        with self._connect() as connection:
+    def get_participant_by_id(
+        self,
+        event_id: int,
+        participant_id: int,
+        *,
+        connection: Any | None = None,
+    ) -> Participant | None:
+        should_close = connection is None
+        if connection is None:
+            connection = self._open_connection()
+
+        try:
             row = self._execute(
                 connection,
                 """
@@ -352,10 +391,22 @@ class PlannerRepository:
                 """,
                 (event_id, participant_id),
             ).fetchone()
+        finally:
+            if should_close:
+                connection.close()
         return self._participant_from_row(row) if row else None
 
-    def list_participants(self, event_id: int) -> list[Participant]:
-        with self._connect() as connection:
+    def list_participants(
+        self,
+        event_id: int,
+        *,
+        connection: Any | None = None,
+    ) -> list[Participant]:
+        should_close = connection is None
+        if connection is None:
+            connection = self._open_connection()
+
+        try:
             rows = self._execute(
                 connection,
                 """
@@ -365,6 +416,9 @@ class PlannerRepository:
                 """,
                 (event_id,),
             ).fetchall()
+        finally:
+            if should_close:
+                connection.close()
         return [self._participant_from_row(row) for row in rows]
 
     def get_participant_count(
@@ -392,8 +446,14 @@ class PlannerRepository:
         self,
         event_id: int,
         participant_id: int,
+        *,
+        connection: Any | None = None,
     ) -> dict[str, int]:
-        with self._connect() as connection:
+        should_close = connection is None
+        if connection is None:
+            connection = self._open_connection()
+
+        try:
             rows = self._execute(
                 connection,
                 """
@@ -404,6 +464,9 @@ class PlannerRepository:
                 """,
                 (event_id, participant_id),
             ).fetchall()
+        finally:
+            if should_close:
+                connection.close()
         return {row["date"]: int(row["status"]) for row in rows}
 
     def update_participant_availability(
@@ -442,7 +505,13 @@ class PlannerRepository:
             connection.commit()
             return cursor.rowcount
 
-    def get_day_summaries(self, event: Event) -> list[DaySummary]:
+    def get_day_summaries(
+        self,
+        event: Event,
+        *,
+        participant_count: int | None = None,
+        connection: Any | None = None,
+    ) -> list[DaySummary]:
         day_map: dict[str, dict[str, object]] = {
             day.isoformat(): {
                 "day": day,
@@ -452,8 +521,13 @@ class PlannerRepository:
             for day in iterate_dates(event.start_date, event.end_date)
         }
 
-        with self._connect() as connection:
-            participant_count = self.get_participant_count(event.id, connection=connection)
+        should_close = connection is None
+        if connection is None:
+            connection = self._open_connection()
+
+        try:
+            if participant_count is None:
+                participant_count = self.get_participant_count(event.id, connection=connection)
             rows = self._execute(
                 connection,
                 """
@@ -465,6 +539,9 @@ class PlannerRepository:
                 """,
                 (event.id,),
             ).fetchall()
+        finally:
+            if should_close:
+                connection.close()
 
         for row in rows:
             bucket = day_map[row["date"]]
