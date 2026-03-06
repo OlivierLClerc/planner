@@ -104,8 +104,9 @@
 }
 
 .calendar-day.has-score {
-  background: rgba(21, 126, 83, var(--availability-alpha, 0.12));
+  background: var(--availability-bg, rgba(242, 245, 242, 0.92));
   color: var(--availability-ink, #163425);
+  border-color: var(--availability-border, rgba(20, 52, 37, 0.18));
 }
 
 .calendar-day.is-readonly {
@@ -149,7 +150,7 @@
   align-self: stretch;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 0.3rem;
 }
 

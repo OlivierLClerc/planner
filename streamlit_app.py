@@ -181,11 +181,11 @@ def render_summary_cards() -> None:
     st.markdown(
         """
         <div class="hero-panel">
-          <div class="hero-kicker">Sondage partage</div>
+          <div class="hero-kicker">Sondage partagé</div>
           <h1 class="hero-title">Trouvez nos dates communes.</h1>
           <p class="hero-subtitle">
-            Creez un calendrier, partagez le lien, puis laissez chaque ami voter
-            jour par jour avec trois niveaux de disponibilite.
+            Créez un calendrier, partagez le lien, puis laissez chaque ami voter
+            jour par jour avec trois niveaux de disponibilité.
           </p>
         </div>
         """,
@@ -201,8 +201,8 @@ def render_home(repo: PlannerRepository) -> None:
     today = date.today()
 
     with left_column:
-        st.subheader("Creer un nouveau sondage")
-        st.caption("Un seul organisateur cree le sondage. Les participants se connectent ensuite avec un nom et un code secret.")
+        st.subheader("Créer un nouveau sondage")
+        st.caption("Un seul organisateur crée le sondage. Les participants se connectent ensuite avec un nom et un code secret.")
         with st.form("create_event_form", clear_on_submit=False):
             title = st.text_input("Titre du sondage", placeholder="Week-end en Bretagne")
             description = st.text_area(
@@ -214,12 +214,12 @@ def render_home(repo: PlannerRepository) -> None:
             organizer_code = st.text_input(
                 "Code organisateur",
                 type="password",
-                placeholder="Choisissez un code simple a retenir",
+                placeholder="Choisissez un code simple à retenir",
             )
             start_col, end_col = st.columns(2)
             with start_col:
                 start_date = st.date_input(
-                    "Date de debut",
+                    "Date de début",
                     value=today + timedelta(days=7),
                     format="DD/MM/YYYY",
                 )
@@ -248,10 +248,10 @@ def render_home(repo: PlannerRepository) -> None:
                 participant_limit = 0
                 st.caption(
                     "Le nombre de participants reste ouvert. "
-                    "L'intensite des couleurs s'adaptera au nombre actuel de participants."
+                    "L'intensité des couleurs s'adaptera au nombre actuel de participants."
                 )
 
-            submitted = st.form_submit_button("Creer le sondage", use_container_width=True)
+            submitted = st.form_submit_button("Créer le sondage", use_container_width=True)
 
         if submitted:
             try:
@@ -267,7 +267,7 @@ def render_home(repo: PlannerRepository) -> None:
             except ValidationError as error:
                 st.error(str(error))
             else:
-                flash(f"Sondage cree: {event.title}")
+                flash(f"Sondage créé : {event.title}")
                 set_event_slug(event.slug)
                 st.rerun()
 
@@ -293,12 +293,12 @@ def render_home(repo: PlannerRepository) -> None:
         st.markdown(
             """
             <div class="summary-card">
-              <div class="summary-rank">Comment ca marche</div>
+              <div class="summary-rank">Comment ça marche</div>
               <div class="summary-meta">
-                1. Creez un sondage avec une plage de dates.<br/>
-                2. Partagez le lien genere par le slug.<br/>
+                1. Créez un sondage avec une plage de dates.<br/>
+                2. Partagez le lien généré par le slug.<br/>
                 3. Chaque ami vote avec 0, 1 ou 2.<br/>
-                4. Le calendrier montre les meilleures dates en un coup d'oeil.
+                4. Le calendrier montre les meilleures dates en un coup d'œil.
               </div>
             </div>
             """,
@@ -321,7 +321,7 @@ def render_top_dates(summaries) -> None:
     st.subheader("Meilleures dates")
     top_dates = compute_top_dates(summaries, limit=5)
     if not top_dates or all(summary.score == 0 for summary in top_dates):
-        st.info("Aucune disponibilite positive pour l'instant.")
+        st.info("Aucune disponibilité positive pour l'instant.")
         return
 
     columns = st.columns(min(len(top_dates), 3))
@@ -335,7 +335,7 @@ def render_top_dates(summaries) -> None:
                   <div class="summary-date">{format_long_date_fr(summary.day)}</div>
                   <div class="summary-meta">
                     Disponibles: {summary.available_count}<br/>
-                    Peut-etre: {summary.maybe_count}<br/>
+                    Peut-être: {summary.maybe_count}<br/>
                     Score collectif: {round(summary.score * 100)}%
                   </div>
                 </div>
@@ -378,17 +378,17 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
 
     action_col, share_col = st.columns((0.35, 0.65), gap="large")
     with action_col:
-        if st.button("Creer un autre sondage", use_container_width=True):
+        if st.button("Créer un autre sondage", use_container_width=True):
             set_event_slug(None)
             st.rerun()
     with share_col:
         st.code(f"/?event={event.slug}", language=None)
-        st.caption(f"Vous pouvez aussi saisir simplement ce code: {event.slug}")
+        st.caption(f"Vous pouvez aussi saisir simplement ce code : {event.slug}")
 
     metric_col_1, metric_col_2, metric_col_3 = st.columns(3)
-    metric_col_1.metric("Periode", format_date_range_fr(event.start_date, event.end_date))
+    metric_col_1.metric("Période", format_date_range_fr(event.start_date, event.end_date))
     metric_col_2.metric("Participants", summarize_participants_text(participant_count, event.participant_limit))
-    metric_col_3.metric("Jours proposes", str(total_days(event)))
+    metric_col_3.metric("Jours proposés", str(total_days(event)))
     st.caption(summarize_color_scale_text(participant_count, event.participant_limit))
 
     with st.expander("Participants inscrits", expanded=False):
@@ -398,8 +398,33 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
             st.caption("Aucun participant pour le moment.")
 
     if participant is None:
+        st.subheader("Voter sur ce sondage")
+        st.caption("Entrez votre nom avant d'ouvrir le calendrier. Si votre nom existe déjà, utilisez le même code secret pour retrouver vos votes.")
+        with st.form("participant_login_form", clear_on_submit=False):
+            display_name = st.text_input("Votre nom", placeholder="Alex")
+            secret_code = st.text_input(
+                "Votre code secret",
+                type="password",
+                placeholder="Un code simple pour rouvrir vos votes",
+            )
+            join = st.form_submit_button("Entrer dans le calendrier", use_container_width=True)
+
+        if join:
+            try:
+                participant = repo.register_or_login_participant(
+                    event,
+                    display_name=display_name,
+                    secret_code=secret_code,
+                )
+            except (ValidationError, SecretCodeError, ParticipantLimitError) as error:
+                st.error(str(error))
+            else:
+                set_logged_participant(event.slug, participant.id)
+                flash(f"Connexion réussie pour {participant.display_name}")
+                st.rerun()
+
         st.info(
-            "Vous pouvez deja survoler les dates pour voir qui est disponible. "
+            "Vous pouvez déjà survoler les dates pour voir qui est disponible. "
             "Connectez-vous avec un nom et un code secret pour voter."
         )
         active_status = 2
@@ -409,9 +434,9 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
     else:
         info_col, logout_col = st.columns((0.72, 0.28))
         with info_col:
-            st.success(f"Connecte en tant que {participant.display_name}")
+            st.success(f"Connecté en tant que {participant.display_name}")
             active_status = st.radio(
-                "Statut a appliquer",
+                "Statut à appliquer",
                 options=[0, 1, 2],
                 format_func=lambda status: STATUS_LABELS[status],
                 horizontal=True,
@@ -429,9 +454,9 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
         current_votes = merge_vote_overrides(saved_votes, pending_votes)
 
     st.markdown(
-        '<p class="soft-note">Fond plus intense = plus de disponibilites collectives. '
-        'Liseret orange = votre vote "peut-etre", liseret vert = votre vote "disponible". '
-        'Les modifications restent en brouillon jusqu au bouton "Sauvegarder les choix".</p>',
+        '<p class="soft-note">Le fond passe du rouge au vert selon les disponibilités collectives. '
+        'Liseret orange = votre vote "peut-être", liseret vert = votre vote "disponible". '
+        'Les modifications restent en brouillon jusqu’au bouton "Sauvegarder les choix".</p>',
         unsafe_allow_html=True,
     )
 
@@ -465,8 +490,8 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
         draft_count = len(pending_votes)
         if draft_count:
             st.warning(
-                f"{draft_count} jour(s) modifie(s) en attente. "
-                "Les couleurs collectives seront mises a jour apres sauvegarde."
+                f"{draft_count} jour(s) modifié(s) en attente. "
+                "Les couleurs collectives seront mises à jour après sauvegarde."
             )
         else:
             st.caption("Aucune modification en attente.")
@@ -489,37 +514,11 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
                 )
 
             clear_pending_votes(event.slug, participant.id)
-            flash("Choix sauvegardes.")
+            flash("Choix sauvegardés.")
             st.rerun()
 
     st.write("")
     render_top_dates(summaries)
-
-    if participant is None:
-        st.subheader("Voter sur ce sondage")
-        st.caption("Si votre nom existe deja, entrez le meme code secret pour retrouver vos votes.")
-        with st.form("participant_login_form", clear_on_submit=False):
-            display_name = st.text_input("Votre nom", placeholder="Alex")
-            secret_code = st.text_input(
-                "Votre code secret",
-                type="password",
-                placeholder="Un code simple pour rouvrir vos votes",
-            )
-            join = st.form_submit_button("Entrer dans le calendrier", use_container_width=True)
-
-        if join:
-            try:
-                participant = repo.register_or_login_participant(
-                    event,
-                    display_name=display_name,
-                    secret_code=secret_code,
-                )
-            except (ValidationError, SecretCodeError, ParticipantLimitError) as error:
-                st.error(str(error))
-            else:
-                set_logged_participant(event.slug, participant.id)
-                flash(f"Connexion reussie pour {participant.display_name}")
-                st.rerun()
 
 
 def main() -> None:

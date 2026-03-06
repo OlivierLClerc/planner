@@ -31,6 +31,26 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function interpolateColor(start, end, progress) {
+  return Math.round(start + (end - start) * progress);
+}
+
+function buildAvailabilityColors(score) {
+  const progress = Math.max(0, Math.min(score, 1));
+  const red = interpolateColor(244, 52, progress);
+  const green = interpolateColor(111, 168, progress);
+  const blue = interpolateColor(104, 83, progress);
+  const borderRed = interpolateColor(214, 44, progress);
+  const borderGreen = interpolateColor(94, 122, progress);
+  const borderBlue = interpolateColor(88, 64, progress);
+
+  return {
+    background: `rgb(${red} ${green} ${blue} / 0.9)`,
+    border: `rgb(${borderRed} ${borderGreen} ${borderBlue} / 0.82)`,
+    ink: progress >= 0.58 ? "#f7fff6" : "#1f2a20",
+  };
+}
+
 export default function (component) {
   const { data, parentElement, setTriggerValue } = component;
   const monthsContainer = parentElement.querySelector("#calendar-months");
@@ -108,7 +128,7 @@ export default function (component) {
         <div class="calendar-tooltip-value">${availableNames}</div>
       </div>
       <div class="calendar-tooltip-row">
-        <span class="calendar-tooltip-label">Peut-etre</span>
+        <span class="calendar-tooltip-label">Peut-être</span>
         <div class="calendar-tooltip-value">${maybeNames}</div>
       </div>
     `;
@@ -224,11 +244,10 @@ export default function (component) {
       }
       if (summary.score > 0) {
         dayButton.classList.add("has-score");
-        dayButton.style.setProperty("--availability-alpha", `${0.12 + summary.score * 0.78}`);
-        dayButton.style.setProperty(
-          "--availability-ink",
-          summary.score >= 0.56 ? "#f4fff6" : "#163425"
-        );
+        const colors = buildAvailabilityColors(summary.score);
+        dayButton.style.setProperty("--availability-bg", colors.background);
+        dayButton.style.setProperty("--availability-border", colors.border);
+        dayButton.style.setProperty("--availability-ink", colors.ink);
       }
       if (currentVote === 1) {
         dayButton.classList.add("my-maybe");
@@ -250,16 +269,12 @@ export default function (component) {
       voteCountElement.textContent = positiveVotes > 0 ? String(positiveVotes) : "-";
       metaRow.appendChild(voteCountElement);
 
-      const personalVoteElement = document.createElement("div");
-      personalVoteElement.className = "calendar-personal-pill";
-      personalVoteElement.textContent = readOnly
-        ? "Voir"
-        : currentVote === 2
-          ? "Moi: oui"
-          : currentVote === 1
-            ? "Moi: ?"
-            : "Moi: non";
-      metaRow.appendChild(personalVoteElement);
+      if (!readOnly && currentVote > 0) {
+        const personalVoteElement = document.createElement("div");
+        personalVoteElement.className = "calendar-personal-pill";
+        personalVoteElement.textContent = currentVote === 2 ? "Moi : oui" : "Moi : ?";
+        metaRow.appendChild(personalVoteElement);
+      }
 
       dayButton.appendChild(metaRow);
 

@@ -34,13 +34,13 @@ FRENCH_MONTHS = [
 
 STATUS_LABELS = {
     0: "Indisponible",
-    1: "Peut-etre",
+    1: "Peut-être",
     2: "Disponible",
 }
 
 STATUS_DESCRIPTIONS = {
     0: "Je ne peux pas venir",
-    1: "Je peux peut-etre, il faut poser un jour",
+    1: "Je peux peut-être, il faut poser un jour",
     2: "Je suis disponible",
 }
 
@@ -169,9 +169,9 @@ def summarize_participants_text(participant_count: int, participant_limit: int) 
 
 def summarize_color_scale_text(participant_count: int, participant_limit: int) -> str:
     if participant_limit > 0:
-        return f"Echelle fixee sur {participant_limit} participant(s)"
+        return f"Échelle fixée sur {participant_limit} participant(s)"
     effective_limit = max(participant_count, 1)
-    return f"Echelle adaptee au nombre actuel de participants: {effective_limit}"
+    return f"Échelle adaptée au nombre actuel de participants : {effective_limit}"
 
 
 def total_days(event: Event) -> int:

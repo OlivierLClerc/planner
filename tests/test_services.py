@@ -262,11 +262,11 @@ class PlannerRepositoryTestCase(unittest.TestCase):
         self.assertEqual(summarize_participants_text(3, 0), "3 / inconnu")
         self.assertEqual(
             summarize_color_scale_text(3, 10),
-            "Echelle fixee sur 10 participant(s)",
+            "Échelle fixée sur 10 participant(s)",
         )
         self.assertEqual(
             summarize_color_scale_text(3, 0),
-            "Echelle adaptee au nombre actuel de participants: 3",
+            "Échelle adaptée au nombre actuel de participants : 3",
         )
 
 
