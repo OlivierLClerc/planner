@@ -16,18 +16,14 @@ from planner.database import (
     resolve_database_target,
 )
 from planner.services import (
-    STATUS_DESCRIPTIONS,
-    STATUS_LABELS,
     build_calendar_payload,
     compute_top_dates,
     extract_event_slug,
     format_date_range_fr,
     format_long_date_fr,
-    merge_vote_overrides,
     summarize_color_scale_text,
     summarize_participants_text,
     total_days,
-    update_pending_votes,
 )
 
 
@@ -171,24 +167,6 @@ def set_event_slug(slug: str | None) -> None:
 
 def auth_store() -> dict[str, int]:
     return st.session_state.setdefault("participant_auth", {})
-
-
-def pending_vote_store() -> dict[str, dict[str, int]]:
-    return st.session_state.setdefault("pending_votes", {})
-
-
-def pending_vote_key(event_slug: str, participant_id: int) -> str:
-    return f"{event_slug}:{participant_id}"
-
-
-def get_pending_votes(event_slug: str, participant_id: int) -> dict[str, int]:
-    key = pending_vote_key(event_slug, participant_id)
-    store = pending_vote_store()
-    return store.setdefault(key, {})
-
-
-def clear_pending_votes(event_slug: str, participant_id: int) -> None:
-    pending_vote_store().pop(pending_vote_key(event_slug, participant_id), None)
 
 
 def get_logged_participant_id(slug: str) -> int | None:
@@ -496,27 +474,17 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
         info_col, logout_col = st.columns((0.72, 0.28))
         with info_col:
             st.success(f"Connecté en tant que {participant.display_name}")
-            active_status = st.radio(
-                "Statut à appliquer",
-                options=[0, 1, 2],
-                format_func=lambda status: STATUS_LABELS[status],
-                horizontal=True,
-            )
-            st.caption(STATUS_DESCRIPTIONS[active_status])
-            st.caption("Cliquez sur une date ou glissez sur plusieurs jours, puis sauvegardez.")
+            st.caption("Choisissez le statut dans le calendrier, puis cliquez ou glissez sur les dates.")
         with logout_col:
             st.write("")
             st.write("")
             if st.button("Changer de participant", use_container_width=True):
-                clear_pending_votes(event.slug, participant.id)
                 logout_participant(event.slug)
                 st.rerun()
-        pending_votes = get_pending_votes(event.slug, participant.id)
-        current_votes = merge_vote_overrides(saved_votes, pending_votes)
 
     st.markdown(
         '<p class="soft-note">Fond rouge = peu de disponibilités, fond vert = beaucoup de disponibilités. '
-        'Les modifications restent en brouillon jusqu’au bouton "Sauvegarder les choix".</p>',
+        'Les modifications restent locales jusqu’au bouton "Sauvegarder les choix".</p>',
         unsafe_allow_html=True,
     )
 
@@ -524,57 +492,40 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
         event=event,
         participant_count=participant_count,
         theme_type=current_theme_type(),
-        current_votes=current_votes,
+        current_votes=saved_votes,
         summaries=summaries,
-        active_status=active_status,
+        active_status=2,
         read_only=participant is None,
+        draft_storage_key=(
+            f"calendar-draft:{event.slug}:{participant.id}"
+            if participant is not None
+            else ""
+        ),
     )
-    vote_batch = render_calendar(
+    save_batch = render_calendar(
         payload=payload,
         key=f"calendar_{event.slug}_{participant.id if participant else 'public'}",
     )
 
-    if participant is not None and vote_batch:
-        selected_dates = vote_batch.get("dates") or []
-        status_value = int(vote_batch.get("status", active_status))
-        if selected_dates:
-            next_pending_votes = update_pending_votes(
-                saved_votes=saved_votes,
-                pending_votes=pending_votes,
-                dates=selected_dates,
+    if participant is not None and save_batch:
+        grouped_dates: dict[int, list[str]] = {}
+        for item in save_batch.get("changes") or []:
+            try:
+                iso_day = str(item["date"])
+                status_value = int(item["status"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            grouped_dates.setdefault(status_value, []).append(iso_day)
+
+        for status_value, iso_days in grouped_dates.items():
+            repo.update_participant_availability(
+                event,
+                participant.id,
+                dates=iso_days,
                 status=status_value,
             )
-            pending_vote_store()[pending_vote_key(event.slug, participant.id)] = next_pending_votes
-            st.rerun()
 
-    if participant is not None:
-        draft_count = len(pending_votes)
-        if draft_count:
-            st.warning(
-                f"{draft_count} jour(s) modifié(s) en attente. "
-                "Les couleurs collectives seront mises à jour après sauvegarde."
-            )
-        else:
-            st.caption("Aucune modification en attente.")
-
-        if st.button(
-            "Sauvegarder les choix",
-            use_container_width=True,
-            disabled=draft_count == 0,
-        ):
-            grouped_dates: dict[int, list[str]] = {}
-            for iso_day, status_value in pending_votes.items():
-                grouped_dates.setdefault(int(status_value), []).append(iso_day)
-
-            for status_value, iso_days in grouped_dates.items():
-                repo.update_participant_availability(
-                    event,
-                    participant.id,
-                    dates=iso_days,
-                    status=status_value,
-                )
-
-            clear_pending_votes(event.slug, participant.id)
+        if grouped_dates:
             flash("Choix sauvegardés.")
             st.rerun()
 

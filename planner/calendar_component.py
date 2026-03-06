@@ -34,7 +34,6 @@ def render_calendar(*, payload: dict[str, object], key: str) -> dict[str, object
         key=key,
         width="stretch",
         height="content",
-        on_vote_batch_change=lambda: None,
+        on_save_batch_change=lambda: None,
     )
-    return getattr(result, "vote_batch", None)
-
+    return getattr(result, "save_batch", None)

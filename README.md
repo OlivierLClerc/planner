@@ -1,5 +1,7 @@
 # Dispo entre amis
 
+[App here](https://planner-perso.streamlit.app/)
+
 Application Streamlit en francais pour creer des sondages de dates et laisser chaque participant voter avec trois niveaux:
 
 - `0` = indisponible

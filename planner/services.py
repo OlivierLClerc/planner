@@ -118,6 +118,7 @@ def build_calendar_payload(
     summaries: Iterable[DaySummary],
     active_status: int,
     read_only: bool,
+    draft_storage_key: str | None = None,
 ) -> dict[str, object]:
     aggregates: dict[str, dict[str, object]] = {}
     for summary in summaries:
@@ -140,11 +141,20 @@ def build_calendar_payload(
             event.participant_limit if event.participant_limit > 0 else max(participant_count, 1)
         ),
         "themeType": theme_type,
-        "activeStatus": active_status,
-        "activeStatusLabel": STATUS_LABELS[active_status],
+        "defaultActiveStatus": active_status,
+        "statusOptions": [
+            {
+                "value": status,
+                "label": STATUS_LABELS[status],
+                "description": STATUS_DESCRIPTIONS[status],
+            }
+            for status in (0, 1, 2)
+        ],
         "currentVotes": current_votes,
         "aggregates": aggregates,
         "readOnly": read_only,
+        "draftStorageKey": draft_storage_key or "",
+        "saveButtonLabel": "Sauvegarder les choix",
     }
 
 

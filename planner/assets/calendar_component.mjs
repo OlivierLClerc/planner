@@ -1,5 +1,6 @@
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const MONDAY_REFERENCE = new Date(Date.UTC(2024, 0, 1));
+const draftStateByKey = new Map();
 
 function parseIsoDate(isoDate) {
   const [year, month, day] = isoDate.split("-").map(Number);
@@ -68,29 +69,115 @@ function buildAvailabilityColors(score) {
   };
 }
 
+function normalizeVotes(votes) {
+  const normalized = {};
+  for (const [isoDate, status] of Object.entries(votes ?? {})) {
+    normalized[isoDate] = Number(status ?? 0);
+  }
+  return normalized;
+}
+
+function readStoredState(storageKey) {
+  if (!storageKey) {
+    return null;
+  }
+
+  try {
+    const rawValue = window.sessionStorage.getItem(storageKey);
+    if (!rawValue) {
+      return null;
+    }
+    const parsed = JSON.parse(rawValue);
+    return {
+      activeStatus: Number(parsed?.activeStatus ?? 2),
+      draftVotes: normalizeVotes(parsed?.draftVotes ?? {}),
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
+function writeStoredState(storageKey, state) {
+  if (!storageKey) {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(
+      storageKey,
+      JSON.stringify({
+        activeStatus: Number(state.activeStatus ?? 2),
+        draftVotes: state.draftVotes ?? {},
+      })
+    );
+  } catch (error) {
+    // Ignore storage write failures.
+  }
+}
+
+function resolveDraftState(storageKey, savedVotes, defaultActiveStatus) {
+  let state = draftStateByKey.get(storageKey);
+  if (!state) {
+    state = readStoredState(storageKey) ?? {
+      activeStatus: Number(defaultActiveStatus ?? 2),
+      draftVotes: {},
+    };
+  }
+
+  if (!Number.isInteger(state.activeStatus) || state.activeStatus < 0 || state.activeStatus > 2) {
+    state.activeStatus = Number(defaultActiveStatus ?? 2);
+  }
+
+  state.draftVotes = normalizeVotes(state.draftVotes);
+  for (const [isoDate, status] of Object.entries(state.draftVotes)) {
+    if (!(isoDate in savedVotes) || Number(savedVotes[isoDate] ?? 0) === Number(status)) {
+      delete state.draftVotes[isoDate];
+    }
+  }
+
+  draftStateByKey.set(storageKey, state);
+  writeStoredState(storageKey, state);
+  return state;
+}
+
 export default function (component) {
   const { data, parentElement, setTriggerValue } = component;
   const monthsContainer = parentElement.querySelector("#calendar-months");
   const subtitleElement = parentElement.querySelector("#calendar-subtitle");
   const tooltipElement = parentElement.querySelector("#calendar-tooltip");
   const shellElement = parentElement.querySelector(".calendar-shell");
+  const controlsElement = parentElement.querySelector("#calendar-controls");
+  const footerElement = parentElement.querySelector("#calendar-footer");
 
   monthsContainer.replaceChildren();
+  controlsElement.replaceChildren();
+  footerElement.replaceChildren();
   tooltipElement.classList.add("is-hidden");
 
   const locale = data?.locale ?? "fr-FR";
   const themeType = data?.themeType ?? "light";
   const readOnly = Boolean(data?.readOnly);
-  const activeStatusLabel = data?.activeStatusLabel ?? "Disponible";
+  const statusOptions = Array.isArray(data?.statusOptions) && data.statusOptions.length
+    ? data.statusOptions.map((option) => ({
+        value: Number(option.value ?? 0),
+        label: String(option.label ?? ""),
+        description: String(option.description ?? ""),
+      }))
+    : [
+        { value: 0, label: "Indisponible", description: "Je ne peux pas venir" },
+        { value: 1, label: "Peut-etre", description: "Je peux peut-etre, il faut poser un jour" },
+        { value: 2, label: "Disponible", description: "Je suis disponible" },
+      ];
+  const defaultActiveStatus = Number(data?.defaultActiveStatus ?? 2);
+  const savedVotes = normalizeVotes(data?.currentVotes ?? {});
+  const draftStorageKey = String(data?.draftStorageKey ?? "");
+  const state = resolveDraftState(draftStorageKey, savedVotes, defaultActiveStatus);
+
   shellElement.dataset.theme = themeType;
-  subtitleElement.textContent = readOnly
-    ? "Survolez une date pour voir qui est disponible."
-    : `Cliquez ou glissez pour appliquer le statut actif : ${activeStatusLabel}.`;
 
   const startDate = parseIsoDate(data.startDate);
   const endDate = parseIsoDate(data.endDate);
   const aggregates = data?.aggregates ?? {};
-  const currentVotes = data?.currentVotes ?? {};
 
   const weekdayFormatter = new Intl.DateTimeFormat(locale, {
     weekday: "short",
@@ -116,6 +203,128 @@ export default function (component) {
   let isDragging = false;
   let draggedDates = new Set();
   const previewCells = new Map();
+  const dayButtons = new Map();
+
+  function persistDraftState() {
+    draftStateByKey.set(draftStorageKey, state);
+    writeStoredState(draftStorageKey, state);
+  }
+
+  function currentStatusOption() {
+    return (
+      statusOptions.find((option) => option.value === Number(state.activeStatus)) ??
+      statusOptions[statusOptions.length - 1]
+    );
+  }
+
+  function updateSubtitle() {
+    if (readOnly) {
+      subtitleElement.textContent = "Survolez une date pour voir qui est disponible.";
+      return;
+    }
+
+    const selectedOption = currentStatusOption();
+    subtitleElement.textContent =
+      `Cliquez ou glissez pour appliquer : ${selectedOption.label}. ${selectedOption.description}.`;
+  }
+
+  function draftCount() {
+    return Object.keys(state.draftVotes).length;
+  }
+
+  function getEffectiveVote(isoDate) {
+    if (Object.prototype.hasOwnProperty.call(state.draftVotes, isoDate)) {
+      return Number(state.draftVotes[isoDate]);
+    }
+    return Number(savedVotes[isoDate] ?? 0);
+  }
+
+  function syncDayButton(isoDate) {
+    const dayButton = dayButtons.get(isoDate);
+    if (!dayButton) {
+      return;
+    }
+
+    dayButton.classList.remove("my-maybe", "my-available");
+    const currentVote = getEffectiveVote(isoDate);
+    if (currentVote === 1) {
+      dayButton.classList.add("my-maybe");
+    } else if (currentVote === 2) {
+      dayButton.classList.add("my-available");
+    }
+  }
+
+  function syncAllDayButtons() {
+    for (const isoDate of dayButtons.keys()) {
+      syncDayButton(isoDate);
+    }
+  }
+
+  function renderControls() {
+    controlsElement.replaceChildren();
+    if (readOnly) {
+      return;
+    }
+
+    for (const option of statusOptions) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "calendar-status-button";
+      button.textContent = option.label;
+      if (option.value === Number(state.activeStatus)) {
+        button.classList.add("is-active");
+      }
+
+      button.addEventListener("click", () => {
+        state.activeStatus = option.value;
+        persistDraftState();
+        renderControls();
+        updateSubtitle();
+      });
+
+      controlsElement.appendChild(button);
+    }
+  }
+
+  function renderFooter() {
+    footerElement.replaceChildren();
+    if (readOnly) {
+      footerElement.classList.add("is-hidden");
+      return;
+    }
+
+    footerElement.classList.remove("is-hidden");
+
+    const note = document.createElement("div");
+    note.className = "calendar-draft-note";
+    const count = draftCount();
+    note.textContent = count
+      ? `${count} jour(s) en attente. Les couleurs collectives seront mises a jour apres sauvegarde.`
+      : "Aucune modification en attente. Les selections restent locales jusqu'a la sauvegarde.";
+    footerElement.appendChild(note);
+
+    const saveButton = document.createElement("button");
+    saveButton.type = "button";
+    saveButton.className = "calendar-save-button";
+    saveButton.textContent = String(data?.saveButtonLabel ?? "Sauvegarder les choix");
+    saveButton.disabled = count === 0;
+    saveButton.addEventListener("click", () => {
+      const changes = Object.entries(state.draftVotes)
+        .sort(([leftDay], [rightDay]) => leftDay.localeCompare(rightDay))
+        .map(([isoDate, status]) => ({
+          date: isoDate,
+          status: Number(status),
+        }));
+
+      if (!changes.length) {
+        return;
+      }
+
+      setTriggerValue("save_batch", { changes });
+    });
+
+    footerElement.appendChild(saveButton);
+  }
 
   function clearPreview() {
     for (const cell of previewCells.values()) {
@@ -147,7 +356,7 @@ export default function (component) {
         <div class="calendar-tooltip-value">${availableNames}</div>
       </div>
       <div class="calendar-tooltip-row">
-        <span class="calendar-tooltip-label">Peut-être</span>
+        <span class="calendar-tooltip-label">Peut-etre</span>
         <div class="calendar-tooltip-value">${maybeNames}</div>
       </div>
     `;
@@ -175,6 +384,15 @@ export default function (component) {
     cell.classList.add("is-drag-preview");
   }
 
+  function applyDraftVote(isoDate, status) {
+    if (Number(savedVotes[isoDate] ?? 0) === Number(status)) {
+      delete state.draftVotes[isoDate];
+    } else {
+      state.draftVotes[isoDate] = Number(status);
+    }
+    syncDayButton(isoDate);
+  }
+
   function finalizeDrag() {
     if (!isDragging) {
       return;
@@ -190,15 +408,19 @@ export default function (component) {
       return;
     }
 
-    setTriggerValue("vote_batch", {
-      dates,
-      status: data.activeStatus,
-    });
+    for (const isoDate of dates) {
+      applyDraftVote(isoDate, state.activeStatus);
+    }
+    persistDraftState();
+    renderFooter();
   }
 
   const pointerUpHandler = () => finalizeDrag();
   window.addEventListener("pointerup", pointerUpHandler);
   window.addEventListener("pointercancel", pointerUpHandler);
+
+  updateSubtitle();
+  renderControls();
 
   for (
     let cursor = monthStart(startDate);
@@ -252,7 +474,6 @@ export default function (component) {
         availableNames: [],
         maybeNames: [],
       };
-      const currentVote = Number(currentVotes[isoDate] ?? 0);
       const positiveVotes = Number(summary.availableCount ?? 0) + Number(summary.maybeCount ?? 0);
 
       const dayButton = document.createElement("button");
@@ -267,12 +488,6 @@ export default function (component) {
         dayButton.style.setProperty("--availability-bg", colors.background);
         dayButton.style.setProperty("--availability-border", colors.border);
         dayButton.style.setProperty("--availability-ink", colors.ink);
-      }
-      if (currentVote === 1) {
-        dayButton.classList.add("my-maybe");
-      }
-      if (currentVote === 2) {
-        dayButton.classList.add("my-available");
       }
 
       const dayNumberElement = document.createElement("div");
@@ -289,6 +504,8 @@ export default function (component) {
       metaRow.appendChild(voteCountElement);
 
       dayButton.appendChild(metaRow);
+      dayButtons.set(isoDate, dayButton);
+      syncDayButton(isoDate);
 
       dayButton.addEventListener("pointerdown", (event) => {
         if (readOnly) {
@@ -328,6 +545,9 @@ export default function (component) {
     monthSection.appendChild(dayGrid);
     monthsContainer.appendChild(monthSection);
   }
+
+  syncAllDayButtons();
+  renderFooter();
 
   return () => {
     window.removeEventListener("pointerup", pointerUpHandler);
