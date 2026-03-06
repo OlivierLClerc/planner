@@ -521,10 +521,17 @@ class PlannerRepository:
                 "Le support PostgreSQL demande psycopg. Installez les dependances du projet."
             ) from error
 
-        return psycopg.connect(
-            str(self.database_target),
-            row_factory=dict_row,
-        )
+        try:
+            return psycopg.connect(
+                str(self.database_target),
+                row_factory=dict_row,
+            )
+        except Exception as error:
+            raise PlannerError(
+                "Impossible de se connecter a PostgreSQL. "
+                "Verifiez DATABASE_URL, le mot de passe, et utilisez bien l'URL Supabase "
+                "du pooler de session sans les crochets du placeholder."
+            ) from error
 
     def _build_unique_slug(self, connection: Any, title: str) -> str:
         base_slug = slugify(title)
@@ -652,7 +659,12 @@ class PlannerRepository:
         query: str,
         params_seq: Sequence[Sequence[object]],
     ) -> Any:
-        return connection.executemany(self._sql(query), params_seq)
+        sql = self._sql(query)
+        if self.backend == "postgres":
+            cursor = connection.cursor()
+            cursor.executemany(sql, params_seq)
+            return cursor
+        return connection.executemany(sql, params_seq)
 
     def _insert_and_get_id(
         self,

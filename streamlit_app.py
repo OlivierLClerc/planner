@@ -9,6 +9,7 @@ from planner.calendar_component import render_calendar
 from planner.database import (
     DEFAULT_DB_PATH,
     ParticipantLimitError,
+    PlannerError,
     PlannerRepository,
     SecretCodeError,
     ValidationError,
@@ -568,7 +569,15 @@ def main() -> None:
     )
     st.markdown(build_app_style(current_theme_type()), unsafe_allow_html=True)
 
-    repo = get_repository()
+    try:
+        repo = get_repository()
+    except PlannerError as error:
+        st.error(str(error))
+        st.info(
+            "Si vous etes sur Streamlit Cloud, ajoutez DATABASE_URL dans les secrets de l'application. "
+            "En local, utilisez .env."
+        )
+        st.stop()
     event_slug = current_event_slug()
 
     if event_slug:
