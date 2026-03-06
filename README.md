@@ -15,6 +15,19 @@ python -m pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
 
+## Base de donnees
+
+Par defaut, l'application utilise SQLite dans `data/planner.db`.
+
+Pour utiliser PostgreSQL ou Supabase, definissez `DATABASE_URL` :
+
+```env
+DATABASE_URL=postgresql://...
+```
+
+En local, l'application lit automatiquement `.env`.
+Sur Streamlit Community Cloud, ajoutez `DATABASE_URL` dans les secrets de l'application.
+
 ## Fonctionnalites
 
 - creation de plusieurs sondages via un slug partageable

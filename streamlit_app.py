@@ -12,6 +12,7 @@ from planner.database import (
     PlannerRepository,
     SecretCodeError,
     ValidationError,
+    resolve_database_target,
 )
 from planner.services import (
     STATUS_DESCRIPTIONS,
@@ -145,7 +146,11 @@ def build_app_style(theme_type: str) -> str:
 
 @st.cache_resource(show_spinner=False)
 def get_repository() -> PlannerRepository:
-    repo = PlannerRepository(DEFAULT_DB_PATH)
+    try:
+        database_target = resolve_database_target(secrets=st.secrets)
+    except Exception:
+        database_target = DEFAULT_DB_PATH
+    repo = PlannerRepository(database_target)
     repo.init_db()
     return repo
 

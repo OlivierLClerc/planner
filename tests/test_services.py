@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from datetime import date
@@ -9,6 +10,8 @@ from planner.database import (
     ParticipantLimitError,
     PlannerRepository,
     SecretCodeError,
+    load_local_env_file,
+    resolve_database_target,
 )
 from planner.services import compute_top_dates, format_long_date_fr
 from planner.services import (
@@ -268,6 +271,46 @@ class PlannerRepositoryTestCase(unittest.TestCase):
             summarize_color_scale_text(3, 0),
             "Échelle adaptée au nombre actuel de participants : 3",
         )
+
+
+    def test_resolve_database_target_prefers_environment_variable(self) -> None:
+        previous_value = os.environ.get("DATABASE_URL")
+        os.environ["DATABASE_URL"] = "postgresql://example"
+        try:
+            self.assertEqual(resolve_database_target(), "postgresql://example")
+        finally:
+            if previous_value is None:
+                os.environ.pop("DATABASE_URL", None)
+            else:
+                os.environ["DATABASE_URL"] = previous_value
+
+    def test_load_local_env_file_populates_missing_variables_only(self) -> None:
+        previous_db_value = os.environ.get("DATABASE_URL")
+        previous_project_value = os.environ.get("PROJECT_URL")
+        os.environ.pop("DATABASE_URL", None)
+        os.environ["PROJECT_URL"] = "https://deja-present.example"
+
+        env_path = Path(self.temp_dir.name) / ".env"
+        env_path.write_text(
+            "DATABASE_URL=postgresql://from-env-file\n"
+            "PROJECT_URL=https://nouvelle-valeur.example\n",
+            encoding="utf-8",
+        )
+
+        try:
+            load_local_env_file(env_path)
+            self.assertEqual(os.environ.get("DATABASE_URL"), "postgresql://from-env-file")
+            self.assertEqual(os.environ.get("PROJECT_URL"), "https://deja-present.example")
+        finally:
+            if previous_db_value is None:
+                os.environ.pop("DATABASE_URL", None)
+            else:
+                os.environ["DATABASE_URL"] = previous_db_value
+
+            if previous_project_value is None:
+                os.environ.pop("PROJECT_URL", None)
+            else:
+                os.environ["PROJECT_URL"] = previous_project_value
 
 
 if __name__ == "__main__":

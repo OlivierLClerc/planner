@@ -10,11 +10,12 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterator, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "planner.db"
 PBKDF2_ITERATIONS = 200_000
+POSTGRES_URL_PREFIXES = ("postgres://", "postgresql://")
 
 
 class PlannerError(Exception):
@@ -122,54 +123,62 @@ def verify_secret(secret: str, encoded_secret: str) -> bool:
     return hmac.compare_digest(candidate.hex(), digest_hex)
 
 
+def load_local_env_file(env_path: Path | str = ".env") -> None:
+    path = Path(env_path)
+    if not path.exists():
+        return
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+
+        key, value = line.split("=", maxsplit=1)
+        key = key.strip()
+        value = value.strip()
+        if not key or key in os.environ:
+            continue
+
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        os.environ[key] = value
+
+
+def resolve_database_target(
+    *,
+    secrets: Mapping[str, object] | None = None,
+    env_var_name: str = "DATABASE_URL",
+) -> Path | str:
+    load_local_env_file()
+
+    env_value = os.environ.get(env_var_name, "").strip()
+    if env_value:
+        return env_value
+
+    if secrets is not None:
+        try:
+            secret_value = secrets.get(env_var_name, "")
+        except Exception:
+            secret_value = ""
+        if isinstance(secret_value, str) and secret_value.strip():
+            return secret_value.strip()
+
+    return DEFAULT_DB_PATH
+
+
 class PlannerRepository:
     def __init__(self, db_path: Path | str = DEFAULT_DB_PATH) -> None:
-        self.db_path = Path(db_path)
+        self.database_target = db_path
+        self.backend = self._detect_backend(db_path)
+        self.db_path = Path(db_path) if self.backend == "sqlite" else None
 
     def init_db(self) -> None:
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        if self.backend == "sqlite" and self.db_path is not None:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
         with self._connect() as connection:
-            connection.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    slug TEXT NOT NULL UNIQUE,
-                    title TEXT NOT NULL,
-                    description TEXT NOT NULL DEFAULT '',
-                    start_date TEXT NOT NULL,
-                    end_date TEXT NOT NULL,
-                    participant_limit INTEGER NOT NULL DEFAULT 10,
-                    organizer_name TEXT NOT NULL,
-                    organizer_code_hash TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS participants (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_id INTEGER NOT NULL,
-                    display_name TEXT NOT NULL,
-                    display_name_normalized TEXT NOT NULL,
-                    secret_code_hash TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    UNIQUE(event_id, display_name_normalized),
-                    FOREIGN KEY(event_id) REFERENCES events(id) ON DELETE CASCADE
-                );
-
-                CREATE TABLE IF NOT EXISTS availabilities (
-                    event_id INTEGER NOT NULL,
-                    participant_id INTEGER NOT NULL,
-                    date TEXT NOT NULL,
-                    status INTEGER NOT NULL CHECK(status IN (0, 1, 2)),
-                    PRIMARY KEY(event_id, participant_id, date),
-                    FOREIGN KEY(event_id) REFERENCES events(id) ON DELETE CASCADE,
-                    FOREIGN KEY(participant_id) REFERENCES participants(id) ON DELETE CASCADE
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_availabilities_event_date
-                    ON availabilities (event_id, date);
-                """
-            )
+            for statement in self._schema_statements():
+                self._execute(connection, statement)
             connection.commit()
 
     def create_event(
@@ -202,7 +211,8 @@ class PlannerRepository:
         with self._connect() as connection:
             slug = self._build_unique_slug(connection, title)
             created_at = utc_timestamp()
-            cursor = connection.execute(
+            event_id = self._insert_and_get_id(
+                connection,
                 """
                 INSERT INTO events (
                     slug,
@@ -228,7 +238,6 @@ class PlannerRepository:
                     created_at,
                 ),
             )
-            event_id = int(cursor.lastrowid)
             connection.commit()
 
         event = self.get_event_by_id(event_id)
@@ -238,7 +247,8 @@ class PlannerRepository:
 
     def get_event_by_id(self, event_id: int) -> Event | None:
         with self._connect() as connection:
-            row = connection.execute(
+            row = self._execute(
+                connection,
                 "SELECT * FROM events WHERE id = ?",
                 (event_id,),
             ).fetchone()
@@ -246,7 +256,8 @@ class PlannerRepository:
 
     def get_event_by_slug(self, slug: str) -> Event | None:
         with self._connect() as connection:
-            row = connection.execute(
+            row = self._execute(
+                connection,
                 "SELECT * FROM events WHERE slug = ?",
                 (slug,),
             ).fetchone()
@@ -269,7 +280,8 @@ class PlannerRepository:
             raise ValidationError("Le code secret du participant est obligatoire.")
 
         with self._connect() as connection:
-            existing_row = connection.execute(
+            existing_row = self._execute(
+                connection,
                 """
                 SELECT * FROM participants
                 WHERE event_id = ? AND display_name_normalized = ?
@@ -291,7 +303,8 @@ class PlannerRepository:
                 )
 
             created_at = utc_timestamp()
-            cursor = connection.execute(
+            participant_id = self._insert_and_get_id(
+                connection,
                 """
                 INSERT INTO participants (
                     event_id,
@@ -309,13 +322,13 @@ class PlannerRepository:
                     created_at,
                 ),
             )
-            participant_id = int(cursor.lastrowid)
 
             availability_rows = [
                 (event.id, participant_id, day.isoformat(), 0)
                 for day in iterate_dates(event.start_date, event.end_date)
             ]
-            connection.executemany(
+            self._executemany(
+                connection,
                 """
                 INSERT INTO availabilities (event_id, participant_id, date, status)
                 VALUES (?, ?, ?, ?)
@@ -331,7 +344,8 @@ class PlannerRepository:
 
     def get_participant_by_id(self, event_id: int, participant_id: int) -> Participant | None:
         with self._connect() as connection:
-            row = connection.execute(
+            row = self._execute(
+                connection,
                 """
                 SELECT * FROM participants
                 WHERE event_id = ? AND id = ?
@@ -342,7 +356,8 @@ class PlannerRepository:
 
     def list_participants(self, event_id: int) -> list[Participant]:
         with self._connect() as connection:
-            rows = connection.execute(
+            rows = self._execute(
+                connection,
                 """
                 SELECT * FROM participants
                 WHERE event_id = ?
@@ -356,18 +371,19 @@ class PlannerRepository:
         self,
         event_id: int,
         *,
-        connection: sqlite3.Connection | None = None,
+        connection: Any | None = None,
     ) -> int:
         should_close = connection is None
         if connection is None:
             connection = self._open_connection()
 
         try:
-            count = connection.execute(
-                "SELECT COUNT(*) FROM participants WHERE event_id = ?",
+            row = self._execute(
+                connection,
+                "SELECT COUNT(*) AS total FROM participants WHERE event_id = ?",
                 (event_id,),
-            ).fetchone()[0]
-            return int(count)
+            ).fetchone()
+            return int(self._read_scalar(row, key="total"))
         finally:
             if should_close:
                 connection.close()
@@ -378,7 +394,8 @@ class PlannerRepository:
         participant_id: int,
     ) -> dict[str, int]:
         with self._connect() as connection:
-            rows = connection.execute(
+            rows = self._execute(
+                connection,
                 """
                 SELECT date, status
                 FROM availabilities
@@ -410,7 +427,8 @@ class PlannerRepository:
             return 0
 
         with self._connect() as connection:
-            cursor = connection.executemany(
+            cursor = self._executemany(
+                connection,
                 """
                 UPDATE availabilities
                 SET status = ?
@@ -436,7 +454,8 @@ class PlannerRepository:
 
         with self._connect() as connection:
             participant_count = self.get_participant_count(event.id, connection=connection)
-            rows = connection.execute(
+            rows = self._execute(
+                connection,
                 """
                 SELECT a.date, a.status, p.display_name
                 FROM availabilities a
@@ -478,25 +497,42 @@ class PlannerRepository:
         return summaries
 
     @contextmanager
-    def _connect(self) -> Iterator[sqlite3.Connection]:
+    def _connect(self) -> Iterator[Any]:
         connection = self._open_connection()
         try:
             yield connection
         finally:
             connection.close()
 
-    def _open_connection(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.db_path)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        return connection
+    def _open_connection(self) -> Any:
+        if self.backend == "sqlite":
+            if self.db_path is None:
+                raise PlannerError("Chemin SQLite invalide.")
+            connection = sqlite3.connect(self.db_path)
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            return connection
 
-    def _build_unique_slug(self, connection: sqlite3.Connection, title: str) -> str:
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+        except ImportError as error:
+            raise PlannerError(
+                "Le support PostgreSQL demande psycopg. Installez les dependances du projet."
+            ) from error
+
+        return psycopg.connect(
+            str(self.database_target),
+            row_factory=dict_row,
+        )
+
+    def _build_unique_slug(self, connection: Any, title: str) -> str:
         base_slug = slugify(title)
         candidate = base_slug
         suffix = 2
 
-        while connection.execute(
+        while self._execute(
+            connection,
             "SELECT 1 FROM events WHERE slug = ?",
             (candidate,),
         ).fetchone():
@@ -511,7 +547,7 @@ class PlannerRepository:
         return date.fromisoformat(raw_value)
 
     @staticmethod
-    def _event_from_row(row: sqlite3.Row) -> Event:
+    def _event_from_row(row: Mapping[str, Any]) -> Event:
         return Event(
             id=int(row["id"]),
             slug=str(row["slug"]),
@@ -525,10 +561,114 @@ class PlannerRepository:
         )
 
     @staticmethod
-    def _participant_from_row(row: sqlite3.Row) -> Participant:
+    def _participant_from_row(row: Mapping[str, Any]) -> Participant:
         return Participant(
             id=int(row["id"]),
             event_id=int(row["event_id"]),
             display_name=str(row["display_name"]),
             created_at=str(row["created_at"]),
         )
+
+    @staticmethod
+    def _detect_backend(db_path: Path | str) -> str:
+        value = str(db_path).strip()
+        if value.startswith(POSTGRES_URL_PREFIXES):
+            return "postgres"
+        return "sqlite"
+
+    def _schema_statements(self) -> tuple[str, ...]:
+        event_pk = (
+            "BIGSERIAL PRIMARY KEY"
+            if self.backend == "postgres"
+            else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        )
+        participant_pk = (
+            "BIGSERIAL PRIMARY KEY"
+            if self.backend == "postgres"
+            else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        )
+        reference_id_type = "BIGINT" if self.backend == "postgres" else "INTEGER"
+
+        return (
+            f"""
+            CREATE TABLE IF NOT EXISTS events (
+                id {event_pk},
+                slug TEXT NOT NULL UNIQUE,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                start_date TEXT NOT NULL,
+                end_date TEXT NOT NULL,
+                participant_limit INTEGER NOT NULL DEFAULT 10,
+                organizer_name TEXT NOT NULL,
+                organizer_code_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """,
+            f"""
+            CREATE TABLE IF NOT EXISTS participants (
+                id {participant_pk},
+                event_id {reference_id_type} NOT NULL,
+                display_name TEXT NOT NULL,
+                display_name_normalized TEXT NOT NULL,
+                secret_code_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(event_id, display_name_normalized),
+                FOREIGN KEY(event_id) REFERENCES events(id) ON DELETE CASCADE
+            )
+            """,
+            f"""
+            CREATE TABLE IF NOT EXISTS availabilities (
+                event_id {reference_id_type} NOT NULL,
+                participant_id {reference_id_type} NOT NULL,
+                date TEXT NOT NULL,
+                status INTEGER NOT NULL CHECK(status IN (0, 1, 2)),
+                PRIMARY KEY(event_id, participant_id, date),
+                FOREIGN KEY(event_id) REFERENCES events(id) ON DELETE CASCADE,
+                FOREIGN KEY(participant_id) REFERENCES participants(id) ON DELETE CASCADE
+            )
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS idx_availabilities_event_date
+                ON availabilities (event_id, date)
+            """,
+        )
+
+    def _sql(self, query: str) -> str:
+        if self.backend == "postgres":
+            return query.replace("?", "%s")
+        return query
+
+    def _execute(
+        self,
+        connection: Any,
+        query: str,
+        params: Sequence[object] = (),
+    ) -> Any:
+        return connection.execute(self._sql(query), params)
+
+    def _executemany(
+        self,
+        connection: Any,
+        query: str,
+        params_seq: Sequence[Sequence[object]],
+    ) -> Any:
+        return connection.executemany(self._sql(query), params_seq)
+
+    def _insert_and_get_id(
+        self,
+        connection: Any,
+        query: str,
+        params: Sequence[object],
+    ) -> int:
+        if self.backend == "postgres":
+            row = self._execute(connection, f"{query.strip()} RETURNING id", params).fetchone()
+            return int(self._read_scalar(row, key="id"))
+
+        cursor = self._execute(connection, query, params)
+        return int(cursor.lastrowid)
+
+    @staticmethod
+    def _read_scalar(row: Any, *, key: str) -> object:
+        if isinstance(row, Mapping):
+            return row[key]
+        return row[0]
