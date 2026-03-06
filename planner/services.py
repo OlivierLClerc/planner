@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Iterable
+from typing import Iterable, Mapping
+from urllib.parse import parse_qs, urlparse
 
 from planner.database import DaySummary, Event
 
@@ -57,6 +58,55 @@ def format_short_date_fr(value: date) -> str:
 
 def format_date_range_fr(start_date: date, end_date: date) -> str:
     return f"Du {format_short_date_fr(start_date)} au {format_short_date_fr(end_date)}"
+
+
+def extract_event_slug(raw_value: str) -> str:
+    value = raw_value.strip()
+    if not value:
+        return ""
+
+    parse_candidates = [value]
+    if value.startswith("?"):
+        parse_candidates.append(f"https://placeholder.local/{value}")
+    elif value.startswith("/"):
+        parse_candidates.append(f"https://placeholder.local{value}")
+    elif "://" not in value and "=" in value:
+        parse_candidates.append(f"https://placeholder.local/?{value}")
+
+    for candidate in parse_candidates:
+        parsed = urlparse(candidate)
+        event_values = parse_qs(parsed.query).get("event")
+        if event_values:
+            return event_values[-1].strip().strip("/")
+
+    parsed = urlparse(value)
+    path_value = parsed.path or value
+    return path_value.strip().strip("/")
+
+
+def merge_vote_overrides(
+    saved_votes: Mapping[str, int],
+    pending_votes: Mapping[str, int],
+) -> dict[str, int]:
+    merged = dict(saved_votes)
+    merged.update({iso_day: int(status) for iso_day, status in pending_votes.items()})
+    return merged
+
+
+def update_pending_votes(
+    *,
+    saved_votes: Mapping[str, int],
+    pending_votes: Mapping[str, int],
+    dates: Iterable[str],
+    status: int,
+) -> dict[str, int]:
+    updated_votes = dict(pending_votes)
+    for iso_day in dates:
+        if int(saved_votes.get(iso_day, 0)) == int(status):
+            updated_votes.pop(iso_day, None)
+        else:
+            updated_votes[iso_day] = int(status)
+    return updated_votes
 
 
 def build_calendar_payload(

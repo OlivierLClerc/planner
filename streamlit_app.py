@@ -18,10 +18,13 @@ from planner.services import (
     STATUS_LABELS,
     build_calendar_payload,
     compute_top_dates,
+    extract_event_slug,
     format_date_range_fr,
     format_long_date_fr,
+    merge_vote_overrides,
     summarize_participants_text,
     total_days,
+    update_pending_votes,
 )
 
 
@@ -133,6 +136,24 @@ def auth_store() -> dict[str, int]:
     return st.session_state.setdefault("participant_auth", {})
 
 
+def pending_vote_store() -> dict[str, dict[str, int]]:
+    return st.session_state.setdefault("pending_votes", {})
+
+
+def pending_vote_key(event_slug: str, participant_id: int) -> str:
+    return f"{event_slug}:{participant_id}"
+
+
+def get_pending_votes(event_slug: str, participant_id: int) -> dict[str, int]:
+    key = pending_vote_key(event_slug, participant_id)
+    store = pending_vote_store()
+    return store.setdefault(key, {})
+
+
+def clear_pending_votes(event_slug: str, participant_id: int) -> None:
+    pending_vote_store().pop(pending_vote_key(event_slug, participant_id), None)
+
+
 def get_logged_participant_id(slug: str) -> int | None:
     return auth_store().get(slug)
 
@@ -229,12 +250,17 @@ def render_home(repo: PlannerRepository) -> None:
 
     with right_column:
         st.subheader("Ouvrir un sondage existant")
+        st.caption("Collez le lien partage complet ou seulement le code du sondage.")
         with st.form("open_event_form", clear_on_submit=False):
-            slug = st.text_input("Code du sondage", placeholder="week-end-en-bretagne")
+            slug_input = st.text_input(
+                "Code du sondage",
+                placeholder="reunion-biannuelle ou /?event=reunion-biannuelle",
+            )
             go_to_event = st.form_submit_button("Ouvrir", use_container_width=True)
 
         if go_to_event:
-            event = repo.get_event_by_slug(slug.strip())
+            slug = extract_event_slug(slug_input)
+            event = repo.get_event_by_slug(slug)
             if event is None:
                 st.error("Aucun sondage ne correspond a ce code.")
             else:
@@ -334,6 +360,7 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
             st.rerun()
     with share_col:
         st.code(f"/?event={event.slug}", language=None)
+        st.caption(f"Vous pouvez aussi saisir simplement ce code: {event.slug}")
 
     metric_col_1, metric_col_2, metric_col_3 = st.columns(3)
     metric_col_1.metric("Periode", format_date_range_fr(event.start_date, event.end_date))
@@ -352,6 +379,8 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
             "Connectez-vous avec un nom et un code secret pour voter."
         )
         active_status = 2
+        saved_votes: dict[str, int] = {}
+        pending_votes: dict[str, int] = {}
         current_votes: dict[str, int] = {}
     else:
         info_col, logout_col = st.columns((0.72, 0.28))
@@ -368,13 +397,17 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
             st.write("")
             st.write("")
             if st.button("Changer de participant", use_container_width=True):
+                clear_pending_votes(event.slug, participant.id)
                 logout_participant(event.slug)
                 st.rerun()
-        current_votes = repo.get_participant_availability(event.id, participant.id)
+        saved_votes = repo.get_participant_availability(event.id, participant.id)
+        pending_votes = get_pending_votes(event.slug, participant.id)
+        current_votes = merge_vote_overrides(saved_votes, pending_votes)
 
     st.markdown(
         '<p class="soft-note">Fond plus intense = plus de disponibilites collectives. '
-        'Liseret orange = votre vote "peut-etre", liseret vert = votre vote "disponible".</p>',
+        'Liseret orange = votre vote "peut-etre", liseret vert = votre vote "disponible". '
+        'Les modifications restent en brouillon jusqu au bouton "Sauvegarder les choix".</p>',
         unsafe_allow_html=True,
     )
 
@@ -394,12 +427,44 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
         selected_dates = vote_batch.get("dates") or []
         status_value = int(vote_batch.get("status", active_status))
         if selected_dates:
-            repo.update_participant_availability(
-                event,
-                participant.id,
+            next_pending_votes = update_pending_votes(
+                saved_votes=saved_votes,
+                pending_votes=pending_votes,
                 dates=selected_dates,
                 status=status_value,
             )
+            pending_vote_store()[pending_vote_key(event.slug, participant.id)] = next_pending_votes
+            st.rerun()
+
+    if participant is not None:
+        draft_count = len(pending_votes)
+        if draft_count:
+            st.warning(
+                f"{draft_count} jour(s) modifie(s) en attente. "
+                "Les couleurs collectives seront mises a jour apres sauvegarde."
+            )
+        else:
+            st.caption("Aucune modification en attente.")
+
+        if st.button(
+            "Sauvegarder les choix",
+            use_container_width=True,
+            disabled=draft_count == 0,
+        ):
+            grouped_dates: dict[int, list[str]] = {}
+            for iso_day, status_value in pending_votes.items():
+                grouped_dates.setdefault(int(status_value), []).append(iso_day)
+
+            for status_value, iso_days in grouped_dates.items():
+                repo.update_participant_availability(
+                    event,
+                    participant.id,
+                    dates=iso_days,
+                    status=status_value,
+                )
+
+            clear_pending_votes(event.slug, participant.id)
+            flash("Choix sauvegardes.")
             st.rerun()
 
     st.write("")

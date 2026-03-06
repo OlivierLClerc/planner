@@ -11,6 +11,7 @@ from planner.database import (
     SecretCodeError,
 )
 from planner.services import compute_top_dates, format_long_date_fr
+from planner.services import extract_event_slug, merge_vote_overrides, update_pending_votes
 
 
 class PlannerRepositoryTestCase(unittest.TestCase):
@@ -148,7 +149,50 @@ class PlannerRepositoryTestCase(unittest.TestCase):
     def test_format_long_date_fr(self) -> None:
         self.assertEqual(format_long_date_fr(date(2026, 5, 1)), "vendredi 1 mai 2026")
 
+    def test_extract_event_slug_accepts_raw_slug_and_shared_link(self) -> None:
+        self.assertEqual(extract_event_slug("reunion-biannuelle"), "reunion-biannuelle")
+        self.assertEqual(
+            extract_event_slug("/?event=reunion-biannuelle"),
+            "reunion-biannuelle",
+        )
+        self.assertEqual(
+            extract_event_slug("https://planner.streamlit.app/?event=reunion-biannuelle"),
+            "reunion-biannuelle",
+        )
+        self.assertEqual(
+            extract_event_slug("?event=reunion-biannuelle"),
+            "reunion-biannuelle",
+        )
+
+    def test_pending_votes_overlay_and_reset_when_matching_saved_value(self) -> None:
+        saved_votes = {
+            "2026-05-01": 0,
+            "2026-05-02": 2,
+        }
+        pending_votes = update_pending_votes(
+            saved_votes=saved_votes,
+            pending_votes={},
+            dates=["2026-05-01"],
+            status=1,
+        )
+
+        self.assertEqual(pending_votes, {"2026-05-01": 1})
+        self.assertEqual(
+            merge_vote_overrides(saved_votes, pending_votes),
+            {
+                "2026-05-01": 1,
+                "2026-05-02": 2,
+            },
+        )
+
+        reverted_pending_votes = update_pending_votes(
+            saved_votes=saved_votes,
+            pending_votes=pending_votes,
+            dates=["2026-05-01"],
+            status=0,
+        )
+        self.assertEqual(reverted_pending_votes, {})
+
 
 if __name__ == "__main__":
     unittest.main()
-
