@@ -35,19 +35,36 @@ function interpolateColor(start, end, progress) {
   return Math.round(start + (end - start) * progress);
 }
 
+function mixRgb(fromColor, toColor, progress) {
+  return [
+    interpolateColor(fromColor[0], toColor[0], progress),
+    interpolateColor(fromColor[1], toColor[1], progress),
+    interpolateColor(fromColor[2], toColor[2], progress),
+  ];
+}
+
 function buildAvailabilityColors(score) {
   const progress = Math.max(0, Math.min(score, 1));
-  const red = interpolateColor(244, 52, progress);
-  const green = interpolateColor(111, 168, progress);
-  const blue = interpolateColor(104, 83, progress);
-  const borderRed = interpolateColor(214, 44, progress);
-  const borderGreen = interpolateColor(94, 122, progress);
-  const borderBlue = interpolateColor(88, 64, progress);
+  const lowBackground = [244, 197, 197];
+  const midBackground = [241, 214, 133];
+  const highBackground = [84, 176, 115];
+  const lowBorder = [196, 98, 98];
+  const midBorder = [198, 145, 44];
+  const highBorder = [44, 115, 72];
+
+  const useHighSegment = progress >= 0.5;
+  const segmentProgress = useHighSegment ? (progress - 0.5) / 0.5 : progress / 0.5;
+  const background = useHighSegment
+    ? mixRgb(midBackground, highBackground, segmentProgress)
+    : mixRgb(lowBackground, midBackground, segmentProgress);
+  const border = useHighSegment
+    ? mixRgb(midBorder, highBorder, segmentProgress)
+    : mixRgb(lowBorder, midBorder, segmentProgress);
 
   return {
-    background: `rgb(${red} ${green} ${blue} / 0.9)`,
-    border: `rgb(${borderRed} ${borderGreen} ${borderBlue} / 0.82)`,
-    ink: progress >= 0.58 ? "#f7fff6" : "#1f2a20",
+    background: `rgb(${background[0]} ${background[1]} ${background[2]} / 0.96)`,
+    border: `rgb(${border[0]} ${border[1]} ${border[2]} / 0.86)`,
+    ink: progress >= 0.7 ? "#f7fff6" : "#1f2a20",
   };
 }
 
@@ -268,13 +285,6 @@ export default function (component) {
       voteCountElement.className = "calendar-vote-pill";
       voteCountElement.textContent = positiveVotes > 0 ? String(positiveVotes) : "-";
       metaRow.appendChild(voteCountElement);
-
-      if (!readOnly && currentVote > 0) {
-        const personalVoteElement = document.createElement("div");
-        personalVoteElement.className = "calendar-personal-pill";
-        personalVoteElement.textContent = currentVote === 2 ? "Moi : oui" : "Moi : ?";
-        metaRow.appendChild(personalVoteElement);
-      }
 
       dayButton.appendChild(metaRow);
 

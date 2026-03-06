@@ -264,9 +264,15 @@ def render_home(repo: PlannerRepository) -> None:
                     organizer_code=organizer_code,
                     participant_limit=participant_limit,
                 )
+                organizer_participant = repo.register_or_login_participant(
+                    event,
+                    display_name=organizer_name,
+                    secret_code=organizer_code,
+                )
             except ValidationError as error:
                 st.error(str(error))
             else:
+                set_logged_participant(event.slug, organizer_participant.id)
                 flash(f"Sondage créé : {event.title}")
                 set_event_slug(event.slug)
                 st.rerun()
@@ -391,15 +397,12 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
     metric_col_3.metric("Jours proposés", str(total_days(event)))
     st.caption(summarize_color_scale_text(participant_count, event.participant_limit))
 
-    with st.expander("Participants inscrits", expanded=False):
-        if participants:
-            st.write(", ".join(participant_item.display_name for participant_item in participants))
-        else:
-            st.caption("Aucun participant pour le moment.")
-
     if participant is None:
-        st.subheader("Voter sur ce sondage")
-        st.caption("Entrez votre nom avant d'ouvrir le calendrier. Si votre nom existe déjà, utilisez le même code secret pour retrouver vos votes.")
+        st.subheader("Rejoindre ce sondage")
+        st.caption(
+            "Entrez votre nom et votre code secret avant d'ouvrir le calendrier. "
+            "Si votre nom existe déjà, utilisez le même code secret pour retrouver vos votes."
+        )
         with st.form("participant_login_form", clear_on_submit=False):
             display_name = st.text_input("Votre nom", placeholder="Alex")
             secret_code = st.text_input(
@@ -424,14 +427,16 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
                 st.rerun()
 
         st.info(
-            "Vous pouvez déjà survoler les dates pour voir qui est disponible. "
-            "Connectez-vous avec un nom et un code secret pour voter."
+            "Le calendrier apparaîtra après la connexion."
         )
-        active_status = 2
-        saved_votes: dict[str, int] = {}
-        pending_votes: dict[str, int] = {}
-        current_votes: dict[str, int] = {}
+        return
     else:
+        with st.expander("Participants inscrits", expanded=False):
+            if participants:
+                st.write(", ".join(participant_item.display_name for participant_item in participants))
+            else:
+                st.caption("Aucun participant pour le moment.")
+
         info_col, logout_col = st.columns((0.72, 0.28))
         with info_col:
             st.success(f"Connecté en tant que {participant.display_name}")
