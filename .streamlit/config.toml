@@ -1,15 +1,15 @@
 [theme]
 base = "light"
-primaryColor = "#d35c4b"
-backgroundColor = "#f8f5ef"
-secondaryBackgroundColor = "#fffaf4"
+primaryColor = "#2f6d54"
+backgroundColor = "#f5f7f8"
+secondaryBackgroundColor = "#eff2f4"
 textColor = "#173527"
 font = "sans serif"
 
 [theme.light]
-primaryColor = "#d35c4b"
-backgroundColor = "#f8f5ef"
-secondaryBackgroundColor = "#fffaf4"
+primaryColor = "#2f6d54"
+backgroundColor = "#f5f7f8"
+secondaryBackgroundColor = "#eff2f4"
 textColor = "#173527"
 
 [theme.dark]

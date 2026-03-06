@@ -43,17 +43,17 @@ def build_app_style(theme_type: str) -> str:
             "radial-gradient(circle at 85% 15%, rgba(76, 154, 119, 0.14), transparent 24%),"
             "linear-gradient(180deg, #0f1512 0%, #151d18 100%)"
             if is_dark
-            else "radial-gradient(circle at top left, rgba(243, 211, 150, 0.24), transparent 26%),"
-            "radial-gradient(circle at 85% 15%, rgba(110, 182, 143, 0.12), transparent 24%),"
-            "linear-gradient(180deg, #f8f5ef 0%, #f3f6f1 100%)"
+            else "radial-gradient(circle at top left, rgba(216, 224, 228, 0.34), transparent 28%),"
+            "radial-gradient(circle at 85% 15%, rgba(145, 177, 162, 0.14), transparent 24%),"
+            "linear-gradient(180deg, #f5f7f8 0%, #eef3f1 100%)"
         ),
         "panel_border": "rgba(222, 232, 225, 0.10)" if is_dark else "rgba(23, 53, 39, 0.08)",
         "panel_background": (
             "radial-gradient(circle at top left, rgba(236, 143, 86, 0.16), transparent 28%),"
             "linear-gradient(145deg, rgba(24, 31, 27, 0.96), rgba(18, 25, 21, 0.96))"
             if is_dark
-            else "radial-gradient(circle at top left, rgba(255, 224, 169, 0.55), transparent 28%),"
-            "linear-gradient(145deg, rgba(255, 251, 244, 0.96), rgba(239, 247, 241, 0.96))"
+            else "radial-gradient(circle at top left, rgba(221, 229, 225, 0.72), transparent 30%),"
+            "linear-gradient(145deg, rgba(250, 251, 252, 0.96), rgba(241, 245, 243, 0.96))"
         ),
         "panel_shadow": "0 20px 34px rgba(0, 0, 0, 0.24)" if is_dark else "0 20px 34px rgba(23, 53, 39, 0.06)",
         "kicker": "rgba(224, 234, 227, 0.68)" if is_dark else "rgba(23, 53, 39, 0.6)",
