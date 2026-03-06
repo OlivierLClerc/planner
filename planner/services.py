@@ -119,17 +119,18 @@ def build_calendar_payload(
     active_status: int,
     read_only: bool,
     draft_storage_key: str | None = None,
+    show_aggregates: bool = True,
 ) -> dict[str, object]:
     aggregates: dict[str, dict[str, object]] = {}
     for summary in summaries:
         iso_day = summary.day.isoformat()
         aggregates[iso_day] = {
             "date": iso_day,
-            "availableCount": summary.available_count,
-            "maybeCount": summary.maybe_count,
-            "score": summary.score,
-            "availableNames": list(summary.available_names),
-            "maybeNames": list(summary.maybe_names),
+            "availableCount": summary.available_count if show_aggregates else 0,
+            "maybeCount": summary.maybe_count if show_aggregates else 0,
+            "score": summary.score if show_aggregates else 0,
+            "availableNames": list(summary.available_names) if show_aggregates else [],
+            "maybeNames": list(summary.maybe_names) if show_aggregates else [],
         }
 
     return {
@@ -153,6 +154,7 @@ def build_calendar_payload(
         "currentVotes": current_votes,
         "aggregates": aggregates,
         "readOnly": read_only,
+        "maskOtherVotes": not show_aggregates,
         "draftStorageKey": draft_storage_key or "",
         "saveButtonLabel": "Sauvegarder les choix",
     }

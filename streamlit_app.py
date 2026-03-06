@@ -264,7 +264,6 @@ def render_home(repo: PlannerRepository) -> None:
                     "Le nombre de participants reste ouvert. "
                     "L'intensité des couleurs s'adaptera au nombre actuel de participants."
                 )
-
             submitted = st.form_submit_button("Créer le sondage", use_container_width=True)
 
         if submitted:
@@ -342,6 +341,12 @@ def resolve_logged_participant(
     return participant
 
 
+def participant_is_organizer(event, participant) -> bool:
+    if participant is None:
+        return False
+    return participant.display_name.casefold() == event.organizer_name.casefold()
+
+
 def render_top_dates(summaries) -> None:
     st.subheader("Meilleures dates")
     top_dates = compute_top_dates(summaries, limit=5)
@@ -397,7 +402,6 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
             if participant is not None
             else {}
         )
-
     safe_title = html.escape(event.title)
     safe_description = html.escape(
         event.description
@@ -431,6 +435,7 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
     metric_col_3.metric("Jours proposés", str(total_days(event)))
     st.caption(summarize_color_scale_text(participant_count, event.participant_limit))
 
+    show_group_votes = True
     if participant is None:
         st.subheader("Rejoindre ce sondage")
         st.caption(
@@ -471,10 +476,61 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
             else:
                 st.caption("Aucun participant pour le moment.")
 
-        info_col, logout_col = st.columns((0.72, 0.28))
+        if participant_is_organizer(event, participant):
+            with st.expander("Ajouter un participant", expanded=False):
+                st.caption(
+                    "Préinscrivez un participant avec un nom et un code secret. "
+                    "Il pourra ensuite ouvrir le sondage avec ces informations."
+                )
+                with st.form(f"add_participant_form_{event.slug}", clear_on_submit=True):
+                    invited_name = st.text_input(
+                        "Nom du participant",
+                        placeholder="Alex",
+                    )
+                    invited_secret = st.text_input(
+                        "Code secret du participant",
+                        type="password",
+                        placeholder="Code à lui transmettre",
+                    )
+                    add_participant = st.form_submit_button(
+                        "Ajouter ce participant",
+                        use_container_width=True,
+                    )
+
+                if add_participant:
+                    normalized_name = " ".join(invited_name.split()).casefold()
+                    existing_names = {
+                        " ".join(item.display_name.split()).casefold()
+                        for item in participants
+                    }
+                    if normalized_name and normalized_name in existing_names:
+                        st.error("Ce participant est déjà inscrit sur ce sondage.")
+                    else:
+                        try:
+                            new_participant = repo.register_or_login_participant(
+                                event,
+                                display_name=invited_name,
+                                secret_code=invited_secret,
+                            )
+                        except (ValidationError, SecretCodeError, ParticipantLimitError) as error:
+                            st.error(str(error))
+                        else:
+                            flash(
+                                f"Participant ajouté : {new_participant.display_name}. "
+                                "Transmettez-lui son code secret."
+                            )
+                            st.rerun()
+
+        info_col, toggle_col, logout_col = st.columns((0.45, 0.33, 0.22))
         with info_col:
             st.success(f"Connecté en tant que {participant.display_name}")
             st.caption("Choisissez le statut dans le calendrier, puis cliquez ou glissez sur les dates.")
+        with toggle_col:
+            show_group_votes = st.toggle(
+                "Afficher les votes des autres participants",
+                value=True,
+                key=f"show_group_votes_{event.slug}_{participant.id}",
+            )
         with logout_col:
             st.write("")
             st.write("")
@@ -482,11 +538,18 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
                 logout_participant(event.slug)
                 st.rerun()
 
-    st.markdown(
-        '<p class="soft-note">Fond rouge = peu de disponibilités, fond vert = beaucoup de disponibilités. '
-        'Les modifications restent locales jusqu’au bouton "Sauvegarder les choix".</p>',
-        unsafe_allow_html=True,
-    )
+    if show_group_votes:
+        st.markdown(
+            '<p class="soft-note">Fond rouge = peu de disponibilités, fond vert = beaucoup de disponibilités. '
+            'Les modifications restent locales jusqu’au bouton "Sauvegarder les choix".</p>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<p class="soft-note">Affichage des votes des autres désactivé sur votre écran. '
+            'Les modifications restent locales jusqu’au bouton "Sauvegarder les choix".</p>',
+            unsafe_allow_html=True,
+        )
 
     payload = build_calendar_payload(
         event=event,
@@ -501,6 +564,7 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
             if participant is not None
             else ""
         ),
+        show_aggregates=show_group_votes,
     )
     save_batch = render_calendar(
         payload=payload,
@@ -530,7 +594,10 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
             st.rerun()
 
     st.write("")
-    render_top_dates(summaries)
+    if show_group_votes:
+        render_top_dates(summaries)
+    elif participant is not None:
+        st.info("Réactivez l'affichage des votes des autres pour voir les meilleures dates.")
 
 
 def main() -> None:

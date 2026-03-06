@@ -179,6 +179,7 @@ class PlannerRepository:
         with self._connect() as connection:
             for statement in self._schema_statements():
                 self._execute(connection, statement)
+            self._migrate_schema(connection)
             connection.commit()
 
     @contextmanager
@@ -716,6 +717,9 @@ class PlannerRepository:
                 ON availabilities (event_id, date)
             """,
         )
+
+    def _migrate_schema(self, connection: Any) -> None:
+        return None
 
     def _sql(self, query: str) -> str:
         if self.backend == "postgres":

@@ -15,6 +15,7 @@ from planner.database import (
 )
 from planner.services import compute_top_dates, format_long_date_fr
 from planner.services import (
+    build_calendar_payload,
     extract_event_slug,
     merge_vote_overrides,
     summarize_color_scale_text,
@@ -271,6 +272,36 @@ class PlannerRepositoryTestCase(unittest.TestCase):
             summarize_color_scale_text(3, 0),
             "Échelle adaptée au nombre actuel de participants : 3",
         )
+
+    def test_build_calendar_payload_can_hide_group_aggregates(self) -> None:
+        alice = self.repo.register_or_login_participant(
+            self.event,
+            display_name="Alice",
+            secret_code="alice",
+        )
+        self.repo.update_participant_availability(
+            self.event,
+            alice.id,
+            dates=["2026-05-01"],
+            status=2,
+        )
+
+        summaries = self.repo.get_day_summaries(self.event)
+        payload = build_calendar_payload(
+            event=self.event,
+            participant_count=1,
+            theme_type="light",
+            current_votes={"2026-05-01": 2},
+            summaries=summaries,
+            active_status=2,
+            read_only=False,
+            show_aggregates=False,
+        )
+
+        self.assertTrue(payload["maskOtherVotes"])
+        self.assertEqual(payload["aggregates"]["2026-05-01"]["availableCount"], 0)
+        self.assertEqual(payload["aggregates"]["2026-05-01"]["score"], 0)
+        self.assertEqual(payload["aggregates"]["2026-05-01"]["availableNames"], [])
 
 
     def test_resolve_database_target_prefers_environment_variable(self) -> None:

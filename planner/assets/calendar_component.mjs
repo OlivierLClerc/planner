@@ -157,6 +157,7 @@ export default function (component) {
   const locale = data?.locale ?? "fr-FR";
   const themeType = data?.themeType ?? "light";
   const readOnly = Boolean(data?.readOnly);
+  const maskOtherVotes = Boolean(data?.maskOtherVotes);
   const statusOptions = Array.isArray(data?.statusOptions) && data.statusOptions.length
     ? data.statusOptions.map((option) => ({
         value: Number(option.value ?? 0),
@@ -342,6 +343,30 @@ export default function (component) {
       return;
     }
 
+    if (maskOtherVotes && !readOnly) {
+      tooltipElement.innerHTML = `
+        <div class="calendar-tooltip-title">${escapeHtml(fullDateFormatter.format(parseIsoDate(isoDate)))}</div>
+        <div class="calendar-tooltip-value">Affichage des votes des autres desactive sur votre ecran.</div>
+      `;
+      tooltipElement.classList.remove("is-hidden");
+
+      const shellRect = shellElement.getBoundingClientRect();
+      const cellRect = cell.getBoundingClientRect();
+      const tooltipRect = tooltipElement.getBoundingClientRect();
+
+      let left = cellRect.left - shellRect.left + cellRect.width / 2 - tooltipRect.width / 2;
+      left = Math.max(8, Math.min(left, shellRect.width - tooltipRect.width - 8));
+
+      let top = cellRect.top - shellRect.top - tooltipRect.height - 10;
+      if (top < 8) {
+        top = cellRect.bottom - shellRect.top + 10;
+      }
+
+      tooltipElement.style.left = `${left}px`;
+      tooltipElement.style.top = `${top}px`;
+      return;
+    }
+
     const availableNames = summary.availableNames?.length
       ? summary.availableNames.map(escapeHtml).join(", ")
       : "Personne";
@@ -504,7 +529,11 @@ export default function (component) {
 
       const voteCountElement = document.createElement("div");
       voteCountElement.className = "calendar-vote-pill";
-      voteCountElement.textContent = positiveVotes > 0 ? String(positiveVotes) : "-";
+      voteCountElement.textContent = maskOtherVotes && !readOnly
+        ? "-"
+        : positiveVotes > 0
+          ? String(positiveVotes)
+          : "-";
       metaRow.appendChild(voteCountElement);
 
       dayButton.appendChild(metaRow);
