@@ -302,9 +302,8 @@ def render_home(repo: PlannerRepository) -> None:
               <div class="summary-rank">Comment ça marche</div>
               <div class="summary-meta">
                 1. Créez un sondage avec une plage de dates.<br/>
-                2. Partagez le lien généré par le slug.<br/>
-                3. Chaque ami vote avec 0, 1 ou 2.<br/>
-                4. Le calendrier montre les meilleures dates en un coup d'œil.
+                2. Partagez le lien avec les participants.<br/>
+                3. Chaque ami vote avec 0, 1 ou 2, puis vous repérez vite les meilleures dates.
               </div>
             </div>
             """,
@@ -447,6 +446,7 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
                 horizontal=True,
             )
             st.caption(STATUS_DESCRIPTIONS[active_status])
+            st.caption("Cliquez sur une date ou glissez sur plusieurs jours, puis sauvegardez.")
         with logout_col:
             st.write("")
             st.write("")
@@ -459,8 +459,7 @@ def render_event(repo: PlannerRepository, event_slug: str) -> None:
         current_votes = merge_vote_overrides(saved_votes, pending_votes)
 
     st.markdown(
-        '<p class="soft-note">Le fond passe du rouge au vert selon les disponibilités collectives. '
-        'Liseret orange = votre vote "peut-être", liseret vert = votre vote "disponible". '
+        '<p class="soft-note">Fond rouge = peu de disponibilités, fond vert = beaucoup de disponibilités. '
         'Les modifications restent en brouillon jusqu’au bouton "Sauvegarder les choix".</p>',
         unsafe_allow_html=True,
     )
