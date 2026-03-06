@@ -160,12 +160,13 @@ export default function (component) {
   const statusOptions = Array.isArray(data?.statusOptions) && data.statusOptions.length
     ? data.statusOptions.map((option) => ({
         value: Number(option.value ?? 0),
+        label: String(option.label ?? ""),
         description: String(option.description ?? ""),
       }))
     : [
-        { value: 0, description: "Je ne peux pas venir" },
-        { value: 1, description: "Je peux peut-etre, il faut poser un jour" },
-        { value: 2, description: "Je suis disponible" },
+        { value: 0, label: "Indisponible", description: "Je ne peux pas venir" },
+        { value: 1, label: "Peut-etre", description: "Je peux peut-etre, il faut poser un jour" },
+        { value: 2, label: "Disponible", description: "Je suis disponible" },
       ];
   const defaultActiveStatus = Number(data?.defaultActiveStatus ?? 2);
   const savedVotes = normalizeVotes(data?.currentVotes ?? {});
@@ -269,7 +270,7 @@ export default function (component) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "calendar-status-button";
-      button.textContent = option.description;
+      button.textContent = option.label;
       if (option.value === Number(state.activeStatus)) {
         button.classList.add("is-active");
       }
@@ -384,10 +385,14 @@ export default function (component) {
   }
 
   function applyDraftVote(isoDate, status) {
-    if (Number(savedVotes[isoDate] ?? 0) === Number(status)) {
+    const targetStatus = Number(status);
+    const currentVote = getEffectiveVote(isoDate);
+    const nextStatus = currentVote === targetStatus ? 0 : targetStatus;
+
+    if (Number(savedVotes[isoDate] ?? 0) === nextStatus) {
       delete state.draftVotes[isoDate];
     } else {
-      state.draftVotes[isoDate] = Number(status);
+      state.draftVotes[isoDate] = nextStatus;
     }
     syncDayButton(isoDate);
   }
