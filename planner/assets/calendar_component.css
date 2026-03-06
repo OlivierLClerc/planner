@@ -38,6 +38,9 @@
   font: inherit;
   font-size: 0.86rem;
   font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+  white-space: normal;
   cursor: pointer;
   transition:
     border-color 120ms ease,

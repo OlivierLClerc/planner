@@ -32,12 +32,6 @@ FRENCH_MONTHS = [
     "decembre",
 ]
 
-STATUS_LABELS = {
-    0: "Indisponible",
-    1: "Peut-être",
-    2: "Disponible",
-}
-
 STATUS_DESCRIPTIONS = {
     0: "Je ne peux pas venir",
     1: "Je peux peut-être, il faut poser un jour",
@@ -145,7 +139,6 @@ def build_calendar_payload(
         "statusOptions": [
             {
                 "value": status,
-                "label": STATUS_LABELS[status],
                 "description": STATUS_DESCRIPTIONS[status],
             }
             for status in (0, 1, 2)

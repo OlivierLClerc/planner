@@ -160,13 +160,12 @@ export default function (component) {
   const statusOptions = Array.isArray(data?.statusOptions) && data.statusOptions.length
     ? data.statusOptions.map((option) => ({
         value: Number(option.value ?? 0),
-        label: String(option.label ?? ""),
         description: String(option.description ?? ""),
       }))
     : [
-        { value: 0, label: "Indisponible", description: "Je ne peux pas venir" },
-        { value: 1, label: "Peut-etre", description: "Je peux peut-etre, il faut poser un jour" },
-        { value: 2, label: "Disponible", description: "Je suis disponible" },
+        { value: 0, description: "Je ne peux pas venir" },
+        { value: 1, description: "Je peux peut-etre, il faut poser un jour" },
+        { value: 2, description: "Je suis disponible" },
       ];
   const defaultActiveStatus = Number(data?.defaultActiveStatus ?? 2);
   const savedVotes = normalizeVotes(data?.currentVotes ?? {});
@@ -225,7 +224,7 @@ export default function (component) {
 
     const selectedOption = currentStatusOption();
     subtitleElement.textContent =
-      `Cliquez ou glissez pour appliquer : ${selectedOption.label}. ${selectedOption.description}.`;
+      `Cliquez ou glissez pour appliquer : ${selectedOption.description}.`;
   }
 
   function draftCount() {
@@ -270,7 +269,7 @@ export default function (component) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "calendar-status-button";
-      button.textContent = option.label;
+      button.textContent = option.description;
       if (option.value === Number(state.activeStatus)) {
         button.classList.add("is-active");
       }
